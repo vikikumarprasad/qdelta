@@ -1,0 +1,44 @@
+Bootstrap: docker
+From: ubuntu:22.04
+
+%setup
+    # Create required directories for the HPC
+    mkdir -p $SINGULARITY_ROOTFS/project
+    mkdir -p $SINGULARITY_ROOTFS/scratch
+    mkdir -p $SINGULARITY_ROOTFS/lustre06/project
+    mkdir -p $SINGULARITY_ROOTFS/lustre07/scratch
+
+%post
+    # Set for non-interactive installation
+    export DEBIAN_FRONTEND=noninteractive
+
+    # Install system packages
+    apt-get update && apt-get install -y --no-install-recommends \
+      build-essential \
+      python3 \
+      python3-pip \
+      python3-dev \
+      cmake \
+      rustc \
+      cargo \
+      pkg-config \
+      libgmp-dev \
+      libxml2-dev \
+      tzdata
+
+    # Configure timezone
+    ln -fs /usr/share/zoneinfo/Etc/UTC /etc/localtime
+    dpkg-reconfigure -f noninteractive tzdata
+
+    # Install python packages
+    pip3 install --upgrade pip
+
+    pip3 install --no-cache-dir --upgrade \
+      numpy pandas scipy scikit-learn matplotlib seaborn tqdm joblib \
+      optuna scikit-optimize "ray[tune]" hyperopt qiskit squlearn \
+      pennylane pennylane-qiskit rdkit-pypi shap symengine pyDOE2
+
+%environment
+    # Set environment variables for Python and Matplotlib
+    export PYTHONUNBUFFERED=1
+    export MPLBACKEND=Agg
