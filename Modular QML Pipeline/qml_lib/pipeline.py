@@ -44,7 +44,6 @@ def run_pipeline(args):
         mode_arg = "delta"
     modes_to_run = ["delta", "direct"] if mode_arg == "both" else [mode_arg]
 
-    # Optional fairness toggle for direct mode (default: off unless you add --fair_direct)
     fair_direct = bool(getattr(args, "fair_direct", False))
 
     for mode in modes_to_run:
@@ -55,7 +54,7 @@ def run_pipeline(args):
         original_qubits = args.qubits  # we may temporarily adjust for this pass
 
         if mode == "direct" and fair_direct:
-            # Drop baseline PM7/AE feature so direct model cannot "cheat" versus PM7 baseline
+            # Drop baseline PM7/AE feature for further investigation
             base_map = {"ae": "AE_mopac", "dh": "DH_Mopac"}
             base_col = base_map.get(getattr(args, "target", "ae").lower())
             if base_col and base_col in features_local:

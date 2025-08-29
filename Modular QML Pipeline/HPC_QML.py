@@ -1,6 +1,6 @@
 # HPC_QML.py
 # Author: Armaan
-# Last Updated: July 28, 2025
+# Last Updated: August 29, 2025
 # Purpose: Main driver script for the QML analysis pipeline.
 
 import argparse
@@ -12,7 +12,7 @@ import inspect
 print(f"--- Loading pipeline module from: {inspect.getfile(qml_lib.pipeline)} ---")
 
 from qml_lib.pipeline import run_pipeline
-from qml_lib.config import MODEL_CONFIG # Changed from ENCODING_MAP to MODEL_CONFIG
+from qml_lib.config import MODEL_CONFIG
 import qiskit
 
 def setup_arguments():
@@ -80,14 +80,12 @@ def main():
     print(f"--- Qiskit Version in Container: {qiskit.__version__} ---")
 
     if args.load_custom:
-        # This part remains the same, it registers the CPKernelWrapper
         from qml_lib.local_kernel import register_custom_components
         register_custom_components()
 
     start_time = time.time()
     args = setup_arguments()
     
-    # Add a check for the new models
     if args.model in ['qnn-cpmap', 'qnn-iqp'] and args.encoding is not None:
         print(f"Warning: --encoding '{args.encoding}' is ignored when using model '{args.model}' as it has a fixed feature map.")
 

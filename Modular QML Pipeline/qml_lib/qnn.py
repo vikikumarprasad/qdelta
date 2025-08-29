@@ -16,9 +16,7 @@ from .components import get_optimizer
 from .local_kernel import CPKernelWrapper  # CPMap as an EncodingCircuitBase
 
 
-# -----------------------------
 # QNN with exposed learning rate
-# -----------------------------
 class CustomQNNRegressor(QNNRegressor):
     """Expose optimizer learning-rate ('lr') as a tunable param for Grid/Optuna/etc."""
 
@@ -35,9 +33,7 @@ class CustomQNNRegressor(QNNRegressor):
         return self
 
 
-# -----------------------------
 # IQP Encoding wrapper
-# -----------------------------
 class IQPCircuitWrapper(EncodingCircuitBase):
     """
     IQP-style encoding as an EncodingCircuitBase.
@@ -114,9 +110,8 @@ class IQPCircuitWrapper(EncodingCircuitBase):
         return qc
 
 
-# -----------------------------
 # Factory to build a QNN model
-# -----------------------------
+
 def create_qnn_model(
     args,
     params: dict,

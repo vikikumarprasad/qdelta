@@ -138,7 +138,6 @@ def tune_model(args, search_space: Dict[str, Any], X_train, y_train):
                 print(f"CV fold failed with params {clean_params}: {e}")
                 return float("inf")
 
-        # --- THE FIX: Select the most stable backend based on the model ---
         backend_choice = "multiprocessing" if args.model == "qsvr" else "threading"
         print(f"Using '{backend_choice}' backend for parallelization.")
 

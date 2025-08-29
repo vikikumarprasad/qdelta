@@ -11,7 +11,7 @@ from .qnn import create_qnn_model
 def create_model_from_params(args, params):
     """Factory: builds an estimator consistent with sQUlearn's API."""
 
-    # Your custom QNN variants (unchanged)
+    # QNN Variants with custom wrappers
     if args.model in ["qnn-cpmap", "qnn-iqp"]:
         model_fn, _, extra_args = MODEL_CONFIG[args.model]
         return model_fn(args, params, **extra_args)
@@ -31,12 +31,10 @@ def create_model_from_params(args, params):
 
     pqc = get_pqc(args.encoding, args.qubits, num_layers, num_features)
 
-    # Resolve the estimator class from your MODEL_CONFIG
     model_class, _ = MODEL_CONFIG[args.model]
 
     # ---- Quantum kernel models ------------------------------------------------
     if args.model in ["qsvr", "qkrr", "qgpr"]:
-        # Build quantum kernel via your factory (this is where trainable params belong)
         kernel = get_kernel(args, pqc, args.kernel, args.param_init, args.seed)
 
         if args.model == "qsvr":
@@ -65,10 +63,6 @@ def create_model_from_params(args, params):
                 normalize_y=params.get("normalize_y", True),
                 full_regularization=params.get("full_regularization", False),
             )
-
-        # NOTE: If you want kernel-parameter training, handle it inside get_kernel(...)
-        # by creating trainable feature maps and exposing their parameters to the tuner.
-
         return model
 
     # ---- (Optional) Plain QNN/QRC paths kept for completeness ----------------

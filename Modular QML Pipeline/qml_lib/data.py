@@ -92,7 +92,7 @@ def load_data(
         X_train = pca.fit_transform(X_train)   # fit on train
         X_test  = pca.transform(X_test)        # transform test
 
-    # --- re-encoding shape checks (unchanged) ---
+    # --- re-encoding shape checks
     if reencoding_type == 'sequential':
         if X_train.shape[1] != num_qubits:
             raise ValueError(

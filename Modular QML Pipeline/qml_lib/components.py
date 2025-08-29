@@ -7,7 +7,6 @@ from squlearn.kernel import FidelityKernel, ProjectedQuantumKernel
 
 def get_pqc(encoding: str, num_qubits: int, num_layers: int, num_features: int):
     """Build and return the requested encoding circuit (PQC)."""
-    # Import here to avoid circulars and to pick up your latest ENCODING_MAP
     from .config import ENCODING_MAP
     try:
         pqc_class = ENCODING_MAP[encoding]
@@ -55,7 +54,6 @@ def get_kernel(args, pqc, kernel_type: str, param_init: str, random_seed: int):
 
 def get_optimizer(name: str, learning_rate: float, maxiter: int = 100):
     """Return an sQUlearn optimizer instance."""
-    # Import here to ensure we always use the latest registry you maintain
     from .config import OPTIMIZER_MAP
     opt_cls = OPTIMIZER_MAP.get(name)
     if opt_cls is None:

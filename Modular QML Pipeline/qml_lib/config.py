@@ -28,7 +28,7 @@ class CustomQGPR(QGPR):
         return super().set_params(**params)
 
 
-# ---- Name -> Encoding class map (exact 6 requested + your customs) ----
+# Encoding Circuits
 ENCODING_MAP = {
     "yz_cx": YZ_CX_EncodingCircuit,
     "highdim": HighDimEncodingCircuit,
@@ -41,7 +41,7 @@ ENCODING_MAP = {
     "iqp": IQPCircuitWrapper,
 }
 
-# ---- Optimizer name -> class map ----
+# List of Optimizers to potentially use
 OPTIMIZER_MAP = {
     "adam": optimizers.Adam,
     "lbfgsb": optimizers.LBFGSB,
@@ -71,7 +71,6 @@ MODEL_CONFIG = {
         {
             # QGPR uses 'sigma' (not 'alpha'); range is deliberately wide
             "sigma": ("loguniform", 1e-2, 1e1),
-            # If you want, later you can add:
             # "normalize_y": ("cat", [True, False], None),
             # "full_regularization": ("cat", [False, True], None),
         },
