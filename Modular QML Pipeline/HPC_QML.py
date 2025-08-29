@@ -6,7 +6,14 @@
 import argparse
 import time
 import subprocess
+
+import qml_lib.pipeline
+import inspect
+print(f"--- Loading pipeline module from: {inspect.getfile(qml_lib.pipeline)} ---")
+
 from qml_lib.pipeline import run_pipeline
+from qml_lib.config import MODEL_CONFIG # Changed from ENCODING_MAP to MODEL_CONFIG
+import qiskit
 
 def setup_arguments():
     """Defines all command-line arguments for the QML pipeline."""
@@ -18,11 +25,14 @@ def setup_arguments():
     run_args.add_argument("--seed", type=int, default=42, help="A number to make sure our results are reproducible.")
     run_args.add_argument("--n_jobs", type=int, default=1, help="How many CPUs to use for parallel tasks.")
     run_args.add_argument("--char_samples", type=int, default=5000, help="Samples for PQC characterization (default: 5000).")
-
+    run_args.add_argument("--load_custom", action="store_true", help="Set this flag to load components from 'local_kernel.py'.")
+    run_args.add_argument("--verbose", type=int, default=0, help="Verbosity for tuners/GridSearch/BayesSearch (0..10)")
+    run_args.add_argument("--save_model", action="store_true", help="If set, save the final trained model object to a file.")
 
     model_args = parser.add_argument_group("Model and PQC Arguments")
-    model_args.add_argument("--model", type=str, required=True, choices=["qsvr", "qkrr", "qgpr", "qnn", "qrcr"], help="Which QML model to run.")
-    model_args.add_argument("--encoding", type=str, required=True, choices=["hubregtsen", "chebyshev", "yz_cx", "highdim", "kyriienko", "paramz", "chebyshev_rx"], help="Which quantum circuit to use.")
+    # Updated choices to include the new models from MODEL_CONFIG
+    model_args.add_argument("--model", type=str, required=True, choices=list(MODEL_CONFIG.keys()), help="Which QML model to run.")
+    model_args.add_argument("--encoding", type=str, default=None, help="Which quantum circuit to use (for standard models).")
     model_args.add_argument("--qubits", type=int, required=True, help="Number of qubits.")
     model_args.add_argument("--layers", type=int, required=True, help="Maximum number of layers in the circuit.")
     model_args.add_argument("--optimizer", type=str, default="adam", choices=["adam", "lbfgsb", "spsa", "slsqp"], help="Optimizer for QNN/QRCR models.")
@@ -37,6 +47,7 @@ def setup_arguments():
     kernel_args.add_argument("--train_kernel", action="store_true", help="Set this flag to train the kernel's parameters.")
     kernel_args.add_argument("--param_init", type=str, default="random", choices=["random", "zeros"], help="How to initialize circuit parameters.")
     kernel_args.add_argument("--kernel_optimizer", type=str, default="adam", choices=["adam", "lbfgsb", "spsa", "slsqp"], help="Optimizer for trainable quantum kernels.")
+    kernel_args.add_argument("--kernel_optimizer_iter", type=int, default=100, help="Max iterations/steps for trainable-kernel optimizer (used when --train_kernel).",)
 
     tuner_args = parser.add_argument_group("Hyperparameter Tuner Arguments")
     tuner_args.add_argument("--tuner", type=str, default="none", choices=["grid", "optuna", "skopt", "raytune", "none"], help="Which hyperparameter tuner to use.")
@@ -49,13 +60,37 @@ def setup_arguments():
     data_args.add_argument("--features", nargs='+', required=True, help="A list of the feature columns to use from the data files.")
     data_args.add_argument("--pca_components", type=int, default=None, help="If you want to use PCA, specify the number of components.")
 
+    data_args.add_argument("--target", type=str, default="ae", choices=["ae","dh"],
+                       help="Which property to model: 'ae' for atomization energy, 'dh' for enthalpy.")
+    data_args.add_argument("--mode", type=str, default="delta", choices=["delta","direct","both"],
+                       help="Train on Δ to correct PM7 (delta), train directly on DFT (direct), or run both.")
+
+
     return parser.parse_args()
 
 def main():
     """Main execution block."""
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--load_custom", action="store_true")
+    parser.add_argument("--verbose", type=int, default=0,
+                    help="Verbosity for tuners/GridSearch/BayesSearch (0..10)")
+
+    args, _ = parser.parse_known_args()
+
+    print(f"--- Qiskit Version in Container: {qiskit.__version__} ---")
+
+    if args.load_custom:
+        # This part remains the same, it registers the CPKernelWrapper
+        from qml_lib.local_kernel import register_custom_components
+        register_custom_components()
+
     start_time = time.time()
     args = setup_arguments()
     
+    # Add a check for the new models
+    if args.model in ['qnn-cpmap', 'qnn-iqp'] and args.encoding is not None:
+        print(f"Warning: --encoding '{args.encoding}' is ignored when using model '{args.model}' as it has a fixed feature map.")
+
     run_pipeline(args)
     
     end_time = time.time()
