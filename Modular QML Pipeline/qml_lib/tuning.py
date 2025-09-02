@@ -139,16 +139,13 @@ def tune_model(args, search_space: Dict[str, Any], X_train, y_train):
                 return float("inf")
 
         backend_choice = "multiprocessing" if args.model == "qsvr" else "threading"
-        print(f"Using '{backend_choice}' backend for parallelization.")
-
-        # Parallelize folds for optuna/raytune (skopt uses BayesSearchCV internally)
-        if args.tuner in ("optuna", "raytune") and getattr(args, "n_jobs", 1) > 1:
-            with parallel_backend("backend_choice", n_jobs=args.n_jobs):
-                scores = Parallel(prefer="threads")(
-                    delayed(_one_fold)(tr, va) for tr, va in cv_splitter.split(X_train)
-                )
-        else:
-            scores = [_one_fold(tr, va) for tr, va in cv_splitter.split(X_train)]
+        n_jobs = getattr(args, "n_jobs", 1)
+        
+        # Use the parallel_backend context manager for ALL tuners
+        with parallel_backend(backend_choice, n_jobs=n_jobs):
+            scores = Parallel()(
+                delayed(_one_fold)(tr, va) for tr, va in cv_splitter.split(X_train)
+            )
 
         if any(np.isinf(s) for s in scores):
             return float("inf")

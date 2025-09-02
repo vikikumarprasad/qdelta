@@ -28,7 +28,7 @@ class CustomQGPR(QGPR):
         return super().set_params(**params)
 
 
-# Encoding Circuits
+# ---- Name -> Encoding class map (exact 6 requested + your customs) ----
 ENCODING_MAP = {
     "yz_cx": YZ_CX_EncodingCircuit,
     "highdim": HighDimEncodingCircuit,
@@ -41,7 +41,7 @@ ENCODING_MAP = {
     "iqp": IQPCircuitWrapper,
 }
 
-# List of Optimizers to potentially use
+# ---- Optimizer name -> class map ----
 OPTIMIZER_MAP = {
     "adam": optimizers.Adam,
     "lbfgsb": optimizers.LBFGSB,
@@ -56,23 +56,26 @@ MODEL_CONFIG = {
     "qsvr": (
         QSVR,
         {
-            "C": ("loguniform", 1e-2, 1e3),
-            "epsilon": ("loguniform", 1e-3, 1e1),
+          "C": ("loguniform", 1e-2, 1e3),
+          "epsilon": ("loguniform", 1e-4, 1e-1),
+          # PQK outer Gaussian kernel bandwidth (ignored if kernel != 'projected')
+          "gamma": ("loguniform", 1e-3, 1e1),
         },
     ),
     "qkrr": (
         QKRR,
         {
-            "alpha": ("loguniform", 1e-6, 1e1),
+          "alpha": ("loguniform", 1e-6, 1e1),
+          # PQK outer Gaussian kernel bandwidth
+          "gamma": ("loguniform", 1e-3, 1e1),
         },
     ),
     "qgpr": (
         CustomQGPR,
         {
-            # QGPR uses 'sigma' (not 'alpha'); range is deliberately wide
-            "sigma": ("loguniform", 1e-2, 1e1),
-            # "normalize_y": ("cat", [True, False], None),
-            # "full_regularization": ("cat", [False, True], None),
+          "sigma": ("loguniform", 1e-2, 1e1),
+          # PQK outer Gaussian kernel bandwidth
+          "gamma": ("loguniform", 1e-3, 1e1),
         },
     ),
 

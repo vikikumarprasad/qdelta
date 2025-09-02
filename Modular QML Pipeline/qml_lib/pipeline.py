@@ -44,6 +44,7 @@ def run_pipeline(args):
         mode_arg = "delta"
     modes_to_run = ["delta", "direct"] if mode_arg == "both" else [mode_arg]
 
+    # Optional fairness toggle for direct mode (default: off unless you add --fair_direct)
     fair_direct = bool(getattr(args, "fair_direct", False))
 
     for mode in modes_to_run:
@@ -54,7 +55,7 @@ def run_pipeline(args):
         original_qubits = args.qubits  # we may temporarily adjust for this pass
 
         if mode == "direct" and fair_direct:
-            # Drop baseline PM7/AE feature for further investigation
+            # Drop baseline PM7/AE feature so direct model cannot "cheat" versus PM7 baseline
             base_map = {"ae": "AE_mopac", "dh": "DH_Mopac"}
             base_col = base_map.get(getattr(args, "target", "ae").lower())
             if base_col and base_col in features_local:
@@ -136,12 +137,33 @@ def run_pipeline(args):
 
         # 5) Persist artifacts
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        config_str = f"{args.model.upper()}_q{args.qubits}_L{args.layers}_{args.tuner}_{mode.upper()}"
+        
+        # Start with the model name
+        config_parts = [args.model.upper()]
+        
+        # Add the encoding, but only if it's relevant for the model
+        if args.model not in ["qnn-cpmap", "qnn-iqp"] and args.encoding:
+            config_parts.append(args.encoding)
+        
+        # Add the rest of the configuration details
+        config_parts.append(f"{args.qubits}Q")
+        config_parts.append(f"{args.layers}L")
+        
+        # Only add the tuner if one is being used
+        if args.tuner != "none":
+            config_parts.append(f"Tuner-{args.tuner}")
+            
+        config_parts.append(mode.upper())
+
+        # Join all the parts with underscores for a clean filename
+        config_str = "_".join(config_parts)
+        
+        # We no longer need the timestamp in the main name, it will be appended.
         fname_base = os.path.join(args.output_dir, f"{config_str}_{timestamp}")
 
         final_metrics = {"mae": float(final_mae), "std": float(error_std), "r2": float(r_squared)}
 
-        # CSV + lean log (mode-aware)
+        # This will now use the new, more descriptive fname_base
         save_data_outputs(
             fname_base,
             args,
@@ -156,7 +178,7 @@ def run_pipeline(args):
             best_cv_score=None,
             test_mse=test_mse,
             train_loss=train_mse,
-            mode=mode,  # <<< IMPORTANT: pass mode through
+            mode=mode,
         )
 
         # PDFs (DFT scatter + optional model-only) (mode-aware)

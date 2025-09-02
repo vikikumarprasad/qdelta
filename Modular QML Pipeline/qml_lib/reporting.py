@@ -4,6 +4,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import mean_absolute_error
 
+# ---------- small helpers ----------
+
 def _target_tag(args):
     """Return short target tag for axis labels."""
     try:
@@ -25,6 +27,8 @@ def _title_from_args(args, prefix=None):
     tgt = getattr(args, "target", "ae").upper()
     base = f"{args.model.upper()} - {enc_disp} - {args.qubits}Q - {tgt} - Tuner: {tnr_disp}"
     return f"{prefix} - {base}" if prefix else base
+
+# ---------- plotting helpers ----------
 
 def _scatter_to_pdf(path, title, x_vals, y_vals, metrics_box, x_label, y_label):
     """
@@ -67,6 +71,8 @@ def _scatter_to_pdf(path, title, x_vals, y_vals, metrics_box, x_label, y_label):
     plt.close(fig)
     print(f"Plot (PDF) saved to {path}")
 
+# ---------- public API ----------
+
 def save_data_outputs(
     fname_base,
     args,
@@ -90,7 +96,7 @@ def save_data_outputs(
       - delta: Predicted_DFT = PM7 + y_pred ; True_Delta = y_test ; Predicted_Delta = y_pred
       - direct: Predicted_DFT = y_pred      ; True_Delta = DFT_true - PM7 ; Predicted_Delta = y_pred - PM7
     """
-    # construct mode-aware columns
+    # --- construct mode-aware columns ---
     if mode == "delta":
         true_delta = y_test
         pred_delta = y_pred
@@ -232,6 +238,7 @@ def generate_results_pdfs(
 
     return result
 
+# ---- Backwards-compat wrapper ----
 def generate_results_plot(
     fname_base,
     args,
