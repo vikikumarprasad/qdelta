@@ -1,112 +1,430 @@
-# Quantum Machine Learning for Chemistry on HPC
+# QDELTA: Quantum and Classical Machine Learning for Computational Chemistry
 
-### What is this project?
-This project is a scientific computing pipeline that uses **Quantum Machine Learning (QML)** to improve the accuracy of computational chemistry simulations. It's designed to run on a **High-Performance Computing (HPC)** cluster, which is necessary for running many experiments at once.
+This repository contains a scientific computing pipeline that applies both Quantum Machine Learning (QML) and Classical Machine Learning (CML) to improve the accuracy of computational chemistry predictions. All experiments are designed to run on a High-Performance Computing (HPC) cluster using SLURM and Apptainer containers.
 
-The core idea is to combine a fast, but less accurate, classical simulation method with a flexible QML model. By training the QML model to predict the error of the classical method, we can add this prediction back to the original result to get a final answer that is much closer to the true, high-accuracy value.
+---
 
-### The Project Goal: Delta-Learning (Δ-Learning)
-In many areas of science, we have methods that are fast and cheap, but not very accurate. We also have methods that are very accurate, but are so slow and computationally expensive that we can't use them for large-scale studies.
+## Table of Contents
 
-This project uses a technique called **Delta-Learning (Δ-Learning)** to get the best of both worlds. Here's how it works:
+1. [The Science: Delta-Learning](#the-science-delta-learning)
+2. [Repository Structure](#repository-structure)
+3. [Data](#data)
+4. [Software Containers](#software-containers)
+5. [Quantum ML Pipeline](#quantum-ml-pipeline)
+   - [Models](#qml-models)
+   - [Encoding Circuits](#encoding-circuits)
+   - [Kernels](#kernels)
+   - [Hyperparameter Tuners](#hyperparameter-tuners)
+   - [Running a QML Job](#running-a-qml-job)
+   - [QML SLURM Array Script](#qml-slurm-array-script)
+6. [Classical ML Pipeline](#classical-ml-pipeline)
+   - [Models](#cml-models)
+   - [Feature Variants](#feature-variants)
+   - [Running a CML Job](#running-a-cml-job)
+7. [Output Structure](#output-structure)
+8. [Custom CPKernel Encoding](#custom-cpkernel-encoding)
+9. [Key Configuration Notes](#key-configuration-notes)
 
-* We start with a cheap method (in this case, a semi-empirical quantum chemistry method called **PM7**) to get a baseline prediction for a property we care about (like the heat of formation of a molecule). We know this prediction has some error.
-* We also have a small number of high-accuracy results from an expensive method (like **Density Functional Theory, or DFT**).
-* The goal of our machine learning model is not to predict the property directly. Instead, it learns to predict the difference (the "delta" or **Δ**) between the cheap prediction and the true, high-accuracy value.
+---
 
-$$\Delta = (\text{True Value from DFT}) - (\text{Cheap Value from PM7})$$
+## The Science: Delta-Learning
 
-Once the QML model is trained, we can use it on new molecules. We run the cheap PM7 calculation, and then use our QML model to predict the error (the **Δ**). We "correct" our cheap prediction by adding the predicted error back to it:
+Many computational chemistry methods sit on a spectrum between speed and accuracy. Semi-empirical methods like **PM7** are fast and can be run on thousands of molecules, but introduce significant errors. High-accuracy methods like **Density Functional Theory (DFT)** produce reliable results but are computationally expensive and cannot be applied at scale.
 
-$$\text{Corrected Value} = (\text{Cheap Value from PM7}) + (\text{Predicted } \Delta)$$
+**Delta-Learning (Δ-learning)** bridges this gap. Instead of training a model to predict a molecular property directly, it trains a model to predict the *error* of a cheap method relative to an expensive one:
 
-This way, we can get near-DFT accuracy at a fraction of the computational cost.
+$$\Delta = \text{DFT value} - \text{PM7 value}$$
 
-### What's in this repository?
-There are four main files that run the experiments:
+Once trained, the model is applied as a correction:
 
-* `HPC_QML3.py`: The main Python script that does all the work: loading data, building and training the QML models, and saving the results.
-* `qml_launcher.sh`: A shell script that submits many different jobs to the HPC cluster. It's great for exploring a wide range of model settings.
-* `qml_array.sh`: Another shell script that uses a SLURM "job array" to submit a pre-defined set of experiments.
-* `QCV.py`: A helpful tool for visualizing what the different quantum circuits used in this project actually look like.
+$$\text{Corrected prediction} = \text{PM7 value} + \hat{\Delta}$$
 
-And three data files:
+This repository targets two molecular properties:
 
-* `train_df.csv` & `test_df.csv`: The datasets used for training and testing the models.
-* `smiles_db.csv`: The original source database from which the training and test sets were created.
+- **Atomization Energy (AE)** — the energy required to break a molecule into its constituent atoms
+- **Enthalpy of Reaction (ΔH)** — the heat of reaction
 
-### How to Set Up and Run This Project
+Both properties are predicted in **kcal/mol**. The pipeline also supports a **direct** mode, where the model is trained to predict the DFT value outright without a PM7 correction, and a **both** mode that runs delta and direct in a single job.
 
-#### Step 1: Get the Code and Data
-First, you'll need to get all the project files onto the HPC cluster you're using. This includes the scripts and the data files located in the `data/` directory.
+---
 
-#### Step 2: Understand the Data
-The `data` directory contains the datasets for this project:
-* **`train_df.csv`**: This is the data the model learns from. It contains molecular features and the target "delta" values.
-* **`test_df.csv`**: This data is used to test the model after it has been trained. The model never sees this data during the training process, which gives us an honest measure of its performance.
-* **`smiles_db.csv`**: This is the original database. It likely contains the SMILES strings (a text representation of molecules) and other source information that were used to generate the features in the training and testing sets.
+## Repository Structure
 
-#### Step 3: Build the Software Container
-The Python script has a lot of dependencies (`squlearn`, `scikit-learn`, etc.). The best way to manage these on an HPC cluster is with a software container. This project uses **Apptainer** (formerly Singularity).
+```
+QDELTA/
+│
+├── Classical Machine Learning Scripts/
+│   ├── HPC_CML_DNN.py          # Deep Neural Network
+│   ├── HPC_CML_GPR.py          # Gaussian Process Regression
+│   ├── HPC_CML_KRR.py          # Kernel Ridge Regression
+│   ├── HPC_CML_SVR.py          # Support Vector Regression
+│   └── HPC_CML_XGB.py          # XGBoost
+│
+├── Quantum Machine Learning Scripts/
+│   ├── qml_lib/                # Core QML library
+│   │   ├── custom/             # Custom encoding circuits
+│   │   │   ├── kernel.py       # CPKernel circuit definition
+│   │   │   └── utility.py      # Meta-Fibonacci qubit mapping utilities
+│   │   ├── components.py       # PQC and kernel factory functions
+│   │   ├── config.py           # Central config: models, encodings, optimizers
+│   │   ├── data.py             # Data loading, scaling, PCA, validation
+│   │   ├── local_kernel.py     # CPKernelWrapper (sQUlearn interface) + registration
+│   │   ├── models.py           # Model factory (QSVR, QKRR, QGPR)
+│   │   ├── pipeline.py         # Full pipeline orchestration
+│   │   ├── reporting.py        # CSV saving, summary logging, PDF plot generation
+│   │   └── tuning.py           # Hyperparameter tuners (grid, optuna, skopt, raytune)
+│   └── HPC_QML.py              # Main QML driver script
+│
+├── data/
+│   ├── train_df_new.csv        # Training set (features + targets)
+│   ├── test_df_new.csv         # Test set (features + targets)
+│   ├── smiles_db.csv           # Source database with SMILES strings
+│   └── wb97xd3.csv             # Additional DFT reference data
+│
+├── cml_cb.sh                   # SLURM single-run script for CML models
+├── qml_new_array.sh            # SLURM array script for QML sweep
+├── CML.def                     # Apptainer definition file for CML container
+├── QML.def                     # Apptainer definition file for QML container
+└── ReadMe.md
+```
 
-A file named `QML.def` is included in this repository. This is a "definition file" that tells Apptainer how to build the software environment. To build the container, run the following command on the HPC login node:
+---
+
+## Data
+
+All data files live in the `data/` directory. The two primary files used during training and evaluation are:
+
+**`train_df_new.csv`** and **`test_df_new.csv`**
+
+Both files share the same column schema. The key columns are:
+
+| Column | Description |
+|---|---|
+| `ae_delta` | Target: AE(DFT) − AE(PM7) — used in delta mode |
+| `ae_dft` | Target: raw DFT atomization energy — used in direct mode |
+| `AE_mopac` | PM7 baseline for atomization energy |
+| `dh_delta` | Target: ΔH(DFT) − ΔH(PM7) — used in delta mode |
+| `dh_dft` | Target: raw DFT reaction enthalpy — used in direct mode |
+| `DH_Mopac` | PM7 baseline for reaction enthalpy |
+| All others | Molecular descriptor features |
+
+The data loading module (`data.py`) automatically detects the PM7 column using a fallback search if the expected column name is not found. All features are scaled to **[−1, 1]** using MinMaxScaler fitted on the training set only. An optional PCA reduction can be applied after scaling.
+
+---
+
+## Software Containers
+
+This project uses two separate Apptainer containers — one for classical ML and one for quantum ML — to keep the dependency stacks cleanly separated.
+
+### Building the containers
+
+From the root of the repository on the HPC login node:
 
 ```bash
+# Build the QML container (qiskit, squlearn, pennylane, optuna, skopt, ray)
 apptainer build QML.sif QML.def
+
+# Build the CML container (tensorflow, xgboost, sklearn, shap, optuna)
+apptainer build CML.sif CML.def
 ```
-This will create a single file, `QML.sif`, that contains Python and all the necessary libraries. The other scripts are already set up to use this file.
 
-#### Step 4: IMPORTANT - Update the Directory Paths
-The shell scripts (`qml_launcher.sh` and `qml_array.sh`) need to know where your project directory is located. **You must edit this variable at the top of both files.**
+Both builds take several minutes. The resulting `.sif` files should be placed in your `BASE_DIR` on the cluster, wherever your SLURM scripts expect them.
 
-Open `qml_launcher.sh` and `qml_array.sh` and find this line:
+### What each container provides
+
+**`QML.sif`** (built from `QML.def`):
+- Python 3, NumPy, pandas, SciPy, scikit-learn, matplotlib
+- `qiskit`, `squlearn`, `pennylane`, `pennylane-qiskit`
+- `optuna`, `scikit-optimize`, `ray[tune]`
+- `rdkit-pypi`, `shap`, `symengine`, `pyDOE2`
+
+**`CML.sif`** (built from `CML.def`):
+- Python 3, NumPy, pandas, scikit-learn, matplotlib, seaborn
+- `tensorflow==2.13.0`
+- `xgboost`, `shap`, `optuna`, `joblib`
+
+> **Note:** `CML.def` currently contains a `%files` section that copies a local directory into the container at build time. Before building on a new system, remove or update that section so the build does not depend on paths specific to the original cluster.
+
+---
+
+## Quantum ML Pipeline
+
+The QML pipeline is fully modular. All behaviour is controlled through command-line arguments passed to `HPC_QML.py`. The library code lives in `qml_lib/`.
+
+### QML Models
+
+Three kernel-based quantum regression models are supported, all from the `sQUlearn` library:
+
+| Argument | Model | Description |
+|---|---|---|
+| `qsvr` | Quantum SVR | Support vector regression with a quantum kernel |
+| `qkrr` | Quantum KRR | Kernel ridge regression with a quantum kernel |
+| `qgpr` | Quantum GPR | Gaussian process regression with a quantum kernel |
+
+### Encoding Circuits
+
+The encoding circuit (Parameterised Quantum Circuit, or PQC) maps classical feature vectors into the quantum Hilbert space. The circuit is specified with `--encoding`:
+
+| Argument | Circuit |
+|---|---|
+| `yz_cx` | YZ-CX encoding circuit |
+| `highdim` | High-dimensional encoding circuit |
+| `hubregtsen` | Hubregtsen encoding circuit |
+| `chebyshev` | Chebyshev PQC |
+| `multicontrol` | Multi-control encoding circuit |
+| `paramz` | Parameterised Z feature map |
+| `cpkernel` | Custom CPKernel (see [Custom CPKernel](#custom-cpkernel-encoding)) |
+
+All standard circuits are provided by `sQUlearn`. The `cpkernel` encoding is a custom circuit defined in `qml_lib/custom/kernel.py` and must be loaded with the `--load_custom` flag.
+
+### Kernels
+
+Two quantum kernel types are supported, specified with `--kernel`:
+
+- **`projected`** (default): Projected Quantum Kernel (PQK) with a Gaussian outer kernel. The bandwidth `gamma` can be set with `--kernel-gamma` or tuned automatically.
+- **`fidelity`**: Fidelity-based quantum kernel.
+
+Both kernels default to the **Qiskit Aer statevector simulator** backend and fall back to PennyLane if Aer is unavailable. The backend can be forced with `--pqk-backend [auto|qiskit|pennylane]`.
+
+> **Important:** Projected kernels use `Executor` objects that are not picklable. The pipeline automatically forces `--n_jobs 1` for projected kernel models to prevent multiprocessing errors.
+
+Kernel parameters can be trained by passing `--train_kernel`. This is currently supported only for QGPR. For QSVR and QKRR, a warning is printed and training is skipped. The kernel optimizer is controlled by `--kernel_optimizer` and `--kernel_optimizer_iter`.
+
+### Hyperparameter Tuners
+
+The tuner is selected with `--tuner`. All tuners use cross-validated MAE as the objective.
+
+| Argument | Tuner | Notes |
+|---|---|---|
+| `none` | No tuning | Uses model defaults |
+| `grid` | GridSearchCV | Expands search space specs into explicit value lists |
+| `optuna` | Optuna (TPE) | Supports pruning; n_jobs=1 internally, parallelism handled per fold |
+| `skopt` | BayesSearchCV | Tunes gamma separately for projected kernels |
+| `raytune` | Ray Tune | Requires Ray to be installed and initialised |
+
+Cross-validation is configured with `--cv_type [kfold|repeated]`, `--cv_folds`, and `--cv_repeats`. The number of tuning trials is set with `--n_trials`.
+
+### Running a QML Job
+
+The main script is `HPC_QML.py`. It is not run directly — it is submitted to SLURM via a container. A minimal example command (inside the container) looks like this:
+
 ```bash
-# File paths for your project.
-BASE_DIR="/home/armaank/projects/def-vikikrpd/armaank"
+python3 HPC_QML.py \
+  --model qgpr \
+  --encoding hubregtsen \
+  --kernel projected \
+  --qubits 5 \
+  --layers 3 \
+  --features ch_f Mul ZPE_TS_P Freq lap_eig_1 \
+  --target ae \
+  --mode delta \
+  --tuner skopt \
+  --n_trials 50 \
+  --cv_type repeated \
+  --cv_folds 3 \
+  --cv_repeats 1 \
+  --seed 42 \
+  --param_init random \
+  --output_dir /path/to/output \
+  --data_dir /path/to/data \
+  --n_jobs 1 \
+  --load_custom
 ```
-Change the path to match the location where you cloned the project on your HPC cluster. For example:
+
+**Key arguments:**
+
+| Argument | Description |
+|---|---|
+| `--model` | One of `qsvr`, `qkrr`, `qgpr` |
+| `--encoding` | Encoding circuit name (see table above) |
+| `--qubits` | Number of qubits. For sequential re-encoding, must equal the number of features |
+| `--layers` | Maximum number of circuit layers |
+| `--features` | List of feature column names from the CSV. For sequential encoding, provide exactly `--qubits` features |
+| `--target` | `ae` for atomization energy, `dh` for reaction enthalpy |
+| `--mode` | `delta`, `direct`, or `both` |
+| `--reencoding_type` | `sequential` (default) or `parallel`. Sequential requires features == qubits. Parallel requires exactly one feature |
+| `--param_init` | `random` or `zeros` for circuit parameter initialisation |
+| `--load_custom` | Must be passed when using `--encoding cpkernel` |
+| `--save_model` | If set, saves the final trained model as a `.joblib` file |
+| `--pca_components` | If set, reduces features to this many PCA components before training |
+
+### QML SLURM Array Script
+
+`qml_new_array.sh` submits a sweep of 140 jobs (7 encodings × 20 qubit/layer configurations) as a SLURM job array. Before submitting, edit the following at the top of the script:
+
 ```bash
-# File paths for your project.
-BASE_DIR="/home/your_username/path/to/your/cloned/project"
+BASE_DIR="/path/to/your/project"   # set to your project root
 ```
 
-#### Step 5: Run an Experiment
-You are now ready to run the experiments. You don't run the Python script directly. Instead, you submit one of the `.sh` scripts to the **SLURM scheduler**.
+Also update `--account`, `--output`, and `--error` in the SBATCH header to match your cluster account and log directory.
 
-To run a wide range of exploratory jobs, edit the settings at the top of `qml_launcher.sh` and then submit it:
+The feature list is defined as a master array and sliced based on qubit count so that the number of features always equals the number of qubits:
+
 ```bash
-sbatch qml_launcher.sh
+master_features=("feature_1" "feature_2" ... "feature_9")
+features_arg=$(IFS=" "; echo "${master_features[*]:0:$qubits}")
 ```
 
-To run a pre-defined set of jobs, edit the settings in `qml_array.sh` and then submit it:
+Replace the placeholder feature names with your actual dataset column names. The qubit sweep is defined by `QUBITS_LIST` and `LAYERS_LIST`. The encoding sweep is defined by `ENCODING_LIST`. The total number of jobs is `N_CONFIGS × N_ENCODINGS` and must match `--array=0-N` in the SBATCH header.
+
+Submit with:
+
 ```bash
-sbatch qml_array.sh
+sbatch qml_new_array.sh
 ```
-You can check on the status of your jobs with the command `squeue -u <your_username>`.
 
-### Visualizing the Quantum Circuits (QCV.py)
-Before running a big experiment, you might want to see what the quantum circuits actually look like. The `QCV.py` script is a tool that lets you do exactly that.
+---
 
-#### What it does
-This script is an interactive tool that asks you which circuits you want to see, with how many qubits and layers. It then generates plots of these circuits and displays them on your screen. You can also choose to save the plots as image files (`.png`, `.svg`, or `.pdf`).
+## Classical ML Pipeline
 
-#### How to run it
-This tool is meant to be run on a computer with a graphical display (your own laptop, or an HPC node with X11 forwarding). Make sure you have the necessary Python libraries installed (like `squlearn` and `matplotlib`). The easiest way to do this is to run the tool from inside the Apptainer container you already built.
+Each CML model is a self-contained Python script. All five scripts share the same general structure: correlation pruning, Optuna tuning, final model fitting, and artifact saving.
 
-Start an interactive session inside your container. From your project directory, run:
+### CML Models
+
+| Script | Model |
+|---|---|
+| `HPC_CML_SVR.py` | Support Vector Regression (sklearn) |
+| `HPC_CML_KRR.py` | Kernel Ridge Regression (sklearn) |
+| `HPC_CML_GPR.py` | Gaussian Process Regression (sklearn) |
+| `HPC_CML_XGB.py` | XGBoost with early stopping |
+| `HPC_CML_DNN.py` | Dense Neural Network (TensorFlow/Keras) |
+
+All models run **both delta-learning and direct DFT** prediction in a single job and output results for both.
+
+### Feature Variants
+
+Every CML script supports two feature variants that can be run in a single job using `--run_variants [all|q9|both]`:
+
+- **ALL**: Uses all available molecular descriptor features, with train-only correlation pruning at |r| > 0.90.
+- **Q9**: Uses a fixed set of 9 features (`exp_mopac`, `AE_mopac`, `Par_n_Pople`, `Mul`, `ch_f`, `DH_Mopac`, `ZPE_TS_R`, `Freq`, `ZPE_P_R`). Correlation pruning is still applied within this subset.
+
+The correlation pruning step removes highly redundant features computed from the training set only to prevent data leakage.
+
+### Running a CML Job
+
+The CML SLURM script is `cml_cb.sh`. It is designed to be fully configurable via `sbatch --export` without modifying the script itself. Before submitting, update the path variables at the top:
+
 ```bash
-apptainer shell QML.sif
+BASE_DIR="/path/to/your/project"
 ```
 
-Once you are inside the container's shell, run the script:
+Also update `--account`, `--output`, and `--error` in the SBATCH header.
+
+**Submitting with default settings:**
+
 ```bash
-python QCV.py
+sbatch cml_cb.sh
 ```
-The script will then guide you through the process, asking you which circuits, qubits, and layers you want to visualize.
 
-### Understanding the Output
-When a job from `qml_launcher.sh` or `qml_array.sh` finishes, it will save its results in the `Output_Files/QML_Models` directory.
+**Overriding settings at submission time:**
 
-* `..._predictions.csv`: A spreadsheet with the detailed predictions from your model.
-* `..._results_plot.png`: A plot showing how well the model's predictions match the true values. The closer the dots are to the red dashed line, the better the model is.
-* `summary_log.csv`: A master log file that records the final error score and settings for every experiment you run. This is very useful for comparing results later.
+```bash
+sbatch --export=ALL,MODEL=gpr,TARGET_COL=dh_delta,N_TRIALS=100,RUN_VARIANTS=both cml_cb.sh
+```
+
+**Configurable variables:**
+
+| Variable | Default | Options |
+|---|---|---|
+| `MODEL` | `svr` | `svr`, `krr`, `xgb`, `gpr`, `dnn` |
+| `TARGET_COL` | `ae_delta` | `ae_delta`, `dh_delta` |
+| `TUNER` | `optuna` | `optuna`, `grid`, `manual` |
+| `N_TRIALS` | `50` | any integer |
+| `SEED` | `42` | any integer |
+| `CV_FOLDS` | `5` | any integer |
+| `CV_REPEATS` | `2` | any integer |
+| `FEATURE_SELECTION` | `corr90` | `corr90`, `none` |
+| `NUM_FEATURES` | `all` | `all` or an integer N (slices the master feature list) |
+| `PCA_COMPONENTS` | `none` | `none` or an integer |
+| `RUN_VARIANTS` | `both` | `all`, `q9`, `both` (GPR and SVR/KRR/DNN) |
+
+The script automatically maps `MODEL` to the correct Python entrypoint, creates a timestamped output directory, mirrors stdout/stderr into that directory, writes a `run_manifest.json`, and updates a `status.txt` file on exit.
+
+> **Note for XGB:** The XGBoost script does not use Optuna tuning. It uses a fixed set of hyperparameters stored in the `BEST_HP` dictionary at the top of `HPC_CML_XGB.py`. Replace these values with the output of your own Optuna study before running at scale.
+
+> **Note for GPR:** GPR is O(n³) in the number of training samples. Keep `CV_FOLDS` and `CV_REPEATS` modest, and consider enabling PCA with `PCA_COMPONENTS` to reduce dimensionality and stabilise training.
+
+---
+
+## Output Structure
+
+### QML Outputs
+
+Results are saved under `--output_dir` in the following structure:
+
+```
+output_dir/
+├── summary_log.csv                  # One row per run; appended across all jobs
+├── master_predictions.csv           # All raw predictions appended across all jobs
+└── <CONFIG>/<UNIQUE_ID>/
+    ├── results_predictions_<mode>.csv
+    └── results_<mode>_dft.pdf
+```
+
+The `<CONFIG>` folder name is assembled from the run settings, for example:
+`QGPR_hubregtsen_5Q_3L_Tuner-skopt_DELTA`
+
+The `<UNIQUE_ID>` is the SLURM job ID and array task ID if running on a cluster, or a timestamp for local runs.
+
+`summary_log.csv` records all configuration details and final metrics (MAE, STD, R²) for every run, making it easy to compare results across a sweep.
+
+### CML Outputs
+
+Each CML job creates a timestamped directory under `OUTPUT_ROOT`:
+
+```
+outputs/CML_Models/<MODEL>_<TIMESTAMP>_<JOBID>/
+├── stdout.log
+├── stderr.log
+├── run_manifest.json               # Full run configuration
+├── status.txt                      # 'running', 'success', or 'failed'
+├── exit_code.txt
+└── <variant>/                      # one folder per feature variant (all, q9)
+    ├── plots/
+    │   ├── <model>_parity_delta_only.pdf
+    │   ├── <model>_parity_dft_from_delta.pdf
+    │   └── <model>_parity_direct_dft.pdf
+    ├── <model>_predictions.csv
+    ├── <model>_*_pipeline.joblib
+    ├── <model>_*_optuna_trials.csv
+    ├── <model>_*_best_params.json
+    ├── dropped_corr90.txt
+    ├── features_after_prune.txt
+    ├── metrics.json
+    └── REPORT.md
+```
+
+All parity plots follow a consistent publication style: blue scatter points, dashed red y=x line, and a beige stats box showing R², MAE, and SD.
+
+---
+
+## Custom CPKernel Encoding
+
+The CPKernel is a custom encoding circuit developed for this project. It is not part of `sQUlearn`'s standard library and lives in `qml_lib/custom/`.
+
+The circuit layout is determined by a **Meta-Fibonacci qubit mapping** (`utility.py`). It has **6 trainable kernel parameters** (alpha, beta, gamma, param1, param2, param3) defined as symbolic Qiskit `Parameter` objects, separate from the feature parameters, and can be trained via `--train_kernel`.
+
+The `CPKernelWrapper` in `local_kernel.py` adapts the circuit to the `EncodingCircuitBase` interface that `sQUlearn` expects. It is registered into the encoding map at runtime by passing `--load_custom` to `HPC_QML.py`.
+
+```bash
+python3 HPC_QML.py \
+  --model qgpr \
+  --encoding cpkernel \
+  --load_custom \
+  ...
+```
+---
+
+## Key Configuration Notes
+
+**Sequential vs. Parallel re-encoding:**
+- `--reencoding_type sequential` (default): Features are encoded across qubits. The number of features must equal `--qubits`.
+- `--reencoding_type parallel`: A single feature is repeated across all qubits and layers. Only one feature may be provided.
+
+**Feature count and qubit count must match for sequential encoding.** The data loading step will raise a `ValueError` if they do not.
+
+**Thread control:** Both pipelines set `OMP_NUM_THREADS`, `MKL_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, and `NUMEXPR_NUM_THREADS` to the number of requested CPUs to prevent oversubscription on shared cluster nodes.
+
+**Reproducibility:** All scripts accept a `--seed` argument. The seed is passed to NumPy, TensorFlow (DNN), and all tuners. SLURM job IDs are included in output folder names to ensure no two runs overwrite each other.
+
+**Extending the pipeline:** New encoding circuits can be added by implementing `EncodingCircuitBase` from `sQUlearn` and registering the class in `ENCODING_MAP` in `config.py`. New classical models can be added to any of the CML scripts by following the existing structure in `run_variant`.

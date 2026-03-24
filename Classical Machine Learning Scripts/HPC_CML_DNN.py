@@ -1,4 +1,6 @@
-# HPC_CML_DNN.py — DNN: Δ-learning + Direct DFT, ALL & Q9 variants, PDF parity plots (final)
+# HPC_CML_DNN.py
+# Deep neural network model for delta-learning and direct DFT prediction.
+# Supports ALL and Q9 feature variants, with Optuna tuning and PDF parity plots.
 
 import os, json, warnings, argparse
 from pathlib import Path
@@ -19,8 +21,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-# TensorFlow / Keras
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"  # silence TF info logs
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 import tensorflow as tf
 from tensorflow.keras import Sequential
 from tensorflow.keras.layers import Dense, Dropout
@@ -30,11 +31,9 @@ from tensorflow.keras import backend as K
 
 warnings.filterwarnings("ignore")
 
-# -----------------------------
-# Matplotlib "paper-like" defaults for PDFs
-# -----------------------------
+# matplotlib settings for paper-quality PDF output
 plt.rcParams.update({
-    "pdf.fonttype": 42,  # embed TrueType
+    "pdf.fonttype": 42,
     "ps.fonttype": 42,
     "font.family": "DejaVu Serif",
     "font.size": 11,
@@ -48,8 +47,10 @@ plt.rcParams.update({
     "legend.frameon": False,
 })
 
+
 def parity_plot_pdf(y_true, y_pred, out_pdf, xlabel, ylabel, annotate=None, title=None):
-    fig, ax = plt.subplots(figsize=(3.5, 3.5))  # ~single-column figure
+    """Saves a parity scatter plot with a y=x reference line to a PDF file."""
+    fig, ax = plt.subplots(figsize=(3.5, 3.5))
     y_true = np.asarray(y_true).ravel()
     y_pred = np.asarray(y_pred).ravel()
 
@@ -59,47 +60,47 @@ def parity_plot_pdf(y_true, y_pred, out_pdf, xlabel, ylabel, annotate=None, titl
     lo, hi = lo - pad, hi + pad
 
     ax.scatter(y_pred, y_true, s=14, alpha=0.7, edgecolors="none")
-    ax.plot([lo, hi], [lo, hi], "k-", lw=1.25)  # y=x
-    ax.set_xlim(lo, hi); ax.set_ylim(lo, hi)
+    ax.plot([lo, hi], [lo, hi], "k-", lw=1.25)
+    ax.set_xlim(lo, hi)
+    ax.set_ylim(lo, hi)
     ax.set_aspect("equal", adjustable="box")
-    ax.set_xlabel(xlabel); ax.set_ylabel(ylabel)
-    if title: ax.set_title(title, pad=6)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    if title:
+        ax.set_title(title, pad=6)
     if annotate:
         ax.text(0.05, 0.95, annotate, transform=ax.transAxes, ha="left", va="top")
     fig.tight_layout()
     fig.savefig(out_pdf, bbox_inches="tight", transparent=True)
     plt.close(fig)
 
-# -----------------------------
-# Args
-# -----------------------------
-parser = argparse.ArgumentParser()
-parser.add_argument("--output_dir", required=True, type=str)
-parser.add_argument("--data_dir",   required=True, type=str)
 
-parser.add_argument("--model", default="dnn")                     # for CLI consistency
-parser.add_argument("--target_col", default="ae_delta")           # 'ae_delta' or 'dh_delta'
-parser.add_argument("--tuner", default="optuna")                  # for CLI consistency
-parser.add_argument("--n_trials", type=int, default=100)
-parser.add_argument("--n_jobs", type=int, default=6)
-parser.add_argument("--seed", type=int, default=17)
-parser.add_argument("--cv_folds", type=int, default=5)
-parser.add_argument("--cv_repeats", type=int, default=2)
-parser.add_argument("--feature_selection", default="corr90")      # Xabier-style (train-only corr drop)
-parser.add_argument("--pca_components", default="none")           # not used for DNN (kept for CLI parity)
-parser.add_argument("--feature_set", nargs="*", default=None)     # optional explicit subset
-parser.add_argument("--run_variants", default="all", choices=["all","q9","both"],
-                    help="Run on full feature set, Q9 subset, or both in one job.")
+# command-line arguments
+parser = argparse.ArgumentParser()
+parser.add_argument("--output_dir",        required=True, type=str)
+parser.add_argument("--data_dir",          required=True, type=str)
+parser.add_argument("--model",             default="dnn")
+parser.add_argument("--target_col",        default="ae_delta")
+parser.add_argument("--tuner",             default="optuna")
+parser.add_argument("--n_trials",          type=int, default=100)
+parser.add_argument("--n_jobs",            type=int, default=6)
+parser.add_argument("--seed",              type=int, default=42)
+parser.add_argument("--cv_folds",          type=int, default=5)
+parser.add_argument("--cv_repeats",        type=int, default=2)
+parser.add_argument("--feature_selection", default="corr90")
+parser.add_argument("--pca_components",    default="none")
+parser.add_argument("--feature_set",       nargs="*", default=None)
+parser.add_argument("--run_variants",      default="all", choices=["all", "q9", "both"])
 args = parser.parse_args()
 
-# -----------------------------
-# Setup / seeds / threads
-# -----------------------------
+# output directory and random seeds
 os.makedirs(args.output_dir, exist_ok=True)
 np.random.seed(args.seed)
 tf.random.set_seed(args.seed)
 os.environ["PYTHONHASHSEED"] = str(args.seed)
-for var in ["OMP_NUM_THREADS","OPENBLAS_NUM_THREADS","MKL_NUM_THREADS","NUMEXPR_NUM_THREADS"]:
+
+# sets thread counts for all linear algebra libraries
+for var in ["OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"]:
     os.environ[var] = str(args.n_jobs)
 try:
     tf.config.threading.set_intra_op_parallelism_threads(args.n_jobs)
@@ -108,29 +109,30 @@ except Exception:
     pass
 K.set_floatx("float32")
 
+
 def log(msg: str):
+    """Prints a timestamped message to stdout."""
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"{ts} | {msg}", flush=True)
 
-# -----------------------------
-# Data
-# -----------------------------
+
+# loads train and test CSVs
 train_csv = Path(args.data_dir) / "train_df_new.csv"
 test_csv  = Path(args.data_dir) / "test_df_new.csv"
 train_df  = pd.read_csv(train_csv, index_col=0)
 test_df   = pd.read_csv(test_csv,  index_col=0)
 
-# Base features/targets
-X_train_base = train_df.drop(columns=["dh_delta","ae_delta","dh_dft","ae_dft"])
-X_test_base  = test_df.drop(columns=["dh_delta","ae_delta","dh_dft","ae_dft"])
-y_train_df   = train_df[["dh_delta","ae_delta"]]
-y_test_df    = test_df[["dh_delta","ae_delta"]]
+# drops target columns to isolate features
+X_train_base = train_df.drop(columns=["dh_delta", "ae_delta", "dh_dft", "ae_dft"])
+X_test_base  = test_df.drop(columns=["dh_delta", "ae_delta", "dh_dft", "ae_dft"])
+y_train_df   = train_df[["dh_delta", "ae_delta"]]
+y_test_df    = test_df[["dh_delta", "ae_delta"]]
 
-# Variant setup
-Q9_LIST = ["exp_mopac","AE_mopac","Par_n_Pople","Mul","ch_f","DH_Mopac","ZPE_TS_R","Freq","ZPE_P_R"]
+# Q9 is a fixed subset of 9 physically meaningful features
+Q9_LIST = ["exp_mopac", "AE_mopac", "Par_n_Pople", "Mul", "ch_f", "DH_Mopac", "ZPE_TS_R", "Freq", "ZPE_P_R"]
 
+# optionally restricts to an explicit feature subset before running variants
 if args.feature_set:
-    # If user passed explicit list, use only that in ALL variant
     feat_subset = [c for c in args.feature_set if c in X_train_base.columns]
     if feat_subset:
         X_train_base = X_train_base[feat_subset].copy()
@@ -139,49 +141,54 @@ if args.feature_set:
     else:
         log("WARNING: none of the requested feature_set names found; using all features.")
 
+# builds the list of variants to run based on the --run_variants argument
 VARIANTS = []
-if args.run_variants in ("all","both"):
+if args.run_variants in ("all", "both"):
     VARIANTS.append(("ALL", X_train_base.columns.tolist()))
-if args.run_variants in ("q9","both"):
+if args.run_variants in ("q9", "both"):
     q9_cols = [c for c in Q9_LIST if c in X_train_base.columns]
     if not q9_cols:
         raise ValueError("Q9 feature names not found in your data columns.")
     VARIANTS.append(("Q9", q9_cols))
 
-# -----------------------------
-# Utility: model builder
-# -----------------------------
+
 def build_model(n_layers: int, units: int, dropout: float, lr: float, input_dim: int) -> tf.keras.Model:
+    """Builds and compiles a dense neural network with the given architecture."""
     model = Sequential()
     model.add(Dense(units, activation="relu", input_shape=(input_dim,)))
     for _ in range(n_layers - 1):
         model.add(Dense(units, activation="relu"))
         if dropout > 0:
             model.add(Dropout(dropout))
-    model.add(Dense(1))  # regression head
+    model.add(Dense(1))
     model.compile(optimizer=Adam(learning_rate=lr), loss="mae")
     return model
 
-# -----------------------------
-# One variant runner (Δ + Direct DFT)
-# -----------------------------
+
 def run_variant(variant_name: str, feat_cols: list) -> dict:
+    """
+    Runs delta-learning and direct DFT training for one feature variant.
+
+    Applies correlation pruning, tunes with Optuna, trains a final model,
+    saves predictions, parity PDFs, and a metrics JSON.
+    Returns a metrics dict.
+    """
     var_dir = Path(args.output_dir) / variant_name
     var_dir.mkdir(parents=True, exist_ok=True)
 
-    # Slice features
     Xtr = X_train_base[feat_cols].copy()
     Xte = X_test_base[feat_cols].copy()
 
-    # TRAIN-ONLY correlation pruning (|r| > 0.90)
+    # removes highly correlated features using train-only correlation (threshold 0.90)
     if args.feature_selection.lower() == "corr90" and Xtr.shape[1] > 1:
-        corr = Xtr.corr().abs()
-        upper = corr.where(np.triu(np.ones(corr.shape), k=1).astype(bool))
+        corr    = Xtr.corr().abs()
+        upper   = corr.where(np.triu(np.ones(corr.shape), k=1).astype(bool))
         to_drop = [c for c in upper.columns if (upper[c] > 0.90).any()]
         Xtr_red = Xtr.drop(columns=to_drop)
         Xte_red = Xte.drop(columns=to_drop, errors="ignore")
         with open(var_dir / "dropped_corr90.txt", "w") as f:
-            for c in to_drop: f.write(c + "\n")
+            for c in to_drop:
+                f.write(c + "\n")
         log(f"[{variant_name}] Corr-pruned: {Xtr.shape[1]} -> {Xtr_red.shape[1]} (dropped {len(to_drop)})")
     else:
         Xtr_red, Xte_red = Xtr, Xte
@@ -189,22 +196,23 @@ def run_variant(variant_name: str, feat_cols: list) -> dict:
 
     n_features = Xtr_red.shape[1]
 
-    # ---- Column mapping for Δ reconstruction ----
-    tcol = args.target_col  # 'ae_delta' or 'dh_delta'
+    # resolves target and PM7 column names based on the chosen target
+    tcol = args.target_col
     if tcol not in y_train_df.columns:
         raise KeyError(f"target_col '{tcol}' not in y_train columns: {list(y_train_df.columns)}")
 
     if tcol == "ae_delta":
-        dft_col  = "ae_dft"
-        pm7_col  = "AE_mopac"
+        dft_col   = "ae_dft"
+        pm7_col   = "AE_mopac"
         delta_lbl = "ΔAE (kcal/mol)"
         dft_lbl   = "AE (kcal/mol)"
     else:
-        dft_col  = "dh_dft"
-        pm7_col  = "DH_Mopac"
+        dft_col   = "dh_dft"
+        pm7_col   = "DH_Mopac"
         delta_lbl = "ΔH‡ (kcal/mol)"
         dft_lbl   = "H‡ (kcal/mol)"
 
+    # falls back to searching for a PM7 column by name if the default is missing
     if pm7_col not in test_df.columns:
         fallbacks = [c for c in test_df.columns if "mopac" in c.lower() or "pm7" in c.lower()]
         if fallbacks:
@@ -213,19 +221,16 @@ def run_variant(variant_name: str, feat_cols: list) -> dict:
         else:
             raise KeyError(f"PM7 base column '{pm7_col}' not found in test_df.")
 
-    # Align targets to feature indices
     y_tr_delta = y_train_df[tcol].values.astype(np.float32)
     y_te_delta = y_test_df[tcol].values.astype(np.float32)
     y_tr_dft   = train_df.loc[Xtr_red.index, dft_col].values.astype(np.float32)
-    y_te_dft   = test_df .loc[Xte_red.index, dft_col].values.astype(np.float32)
+    y_te_dft   = test_df.loc[Xte_red.index, dft_col].values.astype(np.float32)
 
     Xtr_np = Xtr_red.values.astype(np.float32)
     Xte_np = Xte_red.values.astype(np.float32)
 
-    # -----------------------------
-    # Optuna objective (generic over y)
-    # -----------------------------
     def make_objective(y_vector: np.ndarray):
+        """Returns an Optuna objective function that evaluates cross-validated MAE."""
         def objective(trial: opt.trial.Trial) -> float:
             n_layers      = trial.suggest_int("n_layers", 1, 4)
             units         = trial.suggest_int("units", 64, 512, step=64)
@@ -235,28 +240,28 @@ def run_variant(variant_name: str, feat_cols: list) -> dict:
             epochs        = trial.suggest_int("epochs", 60, 200)
 
             rkf = RepeatedKFold(n_splits=args.cv_folds, n_repeats=args.cv_repeats, random_state=args.seed)
-
             fold_maes = []
+
             for fold_idx, (tr_idx, va_idx) in enumerate(rkf.split(Xtr_np), start=1):
                 X_A, X_B = Xtr_np[tr_idx], Xtr_np[va_idx]
                 y_A, y_B = y_vector[tr_idx], y_vector[va_idx]
 
-                scaler = StandardScaler()
-                XA_s = scaler.fit_transform(X_A)
-                XB_s = scaler.transform(X_B)
+                scaler  = StandardScaler()
+                XA_s    = scaler.fit_transform(X_A)
+                XB_s    = scaler.transform(X_B)
 
                 model = build_model(n_layers, units, dropout_rate, learning_rate, input_dim=n_features)
                 es    = EarlyStopping(monitor="val_loss", patience=20, restore_best_weights=True, verbose=0)
                 rlrop = ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=10, min_lr=1e-5, verbose=0)
 
-                model.fit(XA_s, y_A, validation_data=(XB_s, y_B),
+                model.fit(X_A, y_A, validation_data=(XB_s, y_B),
                           epochs=epochs, batch_size=batch_size, verbose=0,
                           callbacks=[es, rlrop])
 
                 preds = model.predict(XB_s, verbose=0).reshape(-1)
                 fold_maes.append(mean_absolute_error(y_B, preds))
 
-                # pruning
+                # reports intermediate value for Optuna pruning
                 trial.report(float(np.mean(fold_maes)), step=fold_idx)
                 if trial.should_prune():
                     K.clear_session()
@@ -266,26 +271,23 @@ def run_variant(variant_name: str, feat_cols: list) -> dict:
             return float(np.mean(fold_maes))
         return objective
 
-    # -----------------------------
-    # Tuning helpers
-    # -----------------------------
     def tune_and_train(label: str, y_vector: np.ndarray, out_prefix: str):
+        """Runs Optuna tuning then retrains a final model on the full training set."""
         log(f"[{variant_name} | {label}] Optuna: trials={args.n_trials}, folds={args.cv_folds}x, repeats={args.cv_repeats}x")
         sampler = TPESampler(seed=args.seed, multivariate=True)
         pruner  = MedianPruner(n_startup_trials=10, n_warmup_steps=1)
         study   = opt.create_study(direction="minimize", sampler=sampler, pruner=pruner)
         study.optimize(make_objective(y_vector), n_trials=args.n_trials)
 
-        # Save study artifacts
-        trials_df = study.trials_dataframe()
-        trials_df.to_csv(var_dir / f"{out_prefix}_optuna_trials.csv", index=False)
+        # saves Optuna trial results and best parameters
+        study.trials_dataframe().to_csv(var_dir / f"{out_prefix}_optuna_trials.csv", index=False)
         with open(var_dir / f"{out_prefix}_best_params.json", "w") as f:
             json.dump(study.best_params, f, indent=2)
 
         log(f"[{variant_name} | {label}] Best CV MAE: {study.best_value:.6f}")
         log(f"[{variant_name} | {label}] Best params: {study.best_params}")
 
-        # Final 80/20 train/val from ALL train rows
+        # retrains on 80% of the training data with the best hyperparameters
         bp = study.best_params
         X_trA, X_vaA, y_trA, y_vaA = train_test_split(
             Xtr_np, y_vector, test_size=0.20, random_state=args.seed
@@ -294,7 +296,6 @@ def run_variant(variant_name: str, feat_cols: list) -> dict:
         scaler_final = StandardScaler()
         X_trA_s = scaler_final.fit_transform(X_trA)
         X_vaA_s = scaler_final.transform(X_vaA)
-        X_te_s  = scaler_final.transform(Xte_np)
 
         model = build_model(
             n_layers=bp["n_layers"], units=bp["units"],
@@ -320,21 +321,18 @@ def run_variant(variant_name: str, feat_cols: list) -> dict:
 
         return study.best_value, bp, model, scaler_final
 
-    # ============================================================
-    # A) Δ-learning: tune on Δ, predict Δ, reconstruct DFT = PM7 + Δ
-    # ============================================================
+    # delta-learning: tune on delta, predict delta, then reconstruct DFT = PM7 + delta
     cv_mae_delta, bp_delta, model_delta, scaler_delta = tune_and_train("Δ-learning", y_tr_delta, out_prefix="dnn_delta")
 
-    X_te_scaled = scaler_delta.transform(Xte_np)
-    pred_delta  = model_delta.predict(X_te_scaled, verbose=0).reshape(-1)
-    pm7_base    = test_df.loc[Xte_red.index, pm7_col].values.astype(np.float32)
+    X_te_scaled         = scaler_delta.transform(Xte_np)
+    pred_delta          = model_delta.predict(X_te_scaled, verbose=0).reshape(-1)
+    pm7_base            = test_df.loc[Xte_red.index, pm7_col].values.astype(np.float32)
     pred_dft_from_delta = pred_delta + pm7_base
 
-    mae_delta = mean_absolute_error(y_te_delta, pred_delta)
+    mae_delta          = mean_absolute_error(y_te_delta, pred_delta)
     mae_dft_from_delta = mean_absolute_error(y_te_dft, pred_dft_from_delta)
     r2_dft_from_delta  = r2_score(y_te_dft, pred_dft_from_delta)
 
-    # Save Δ artifacts
     pd.DataFrame({
         "true_delta": y_te_delta,
         "pred_delta": pred_delta,
@@ -342,7 +340,6 @@ def run_variant(variant_name: str, feat_cols: list) -> dict:
         "pred_dft":   pred_dft_from_delta,
     }, index=Xte_red.index).to_csv(var_dir / "dnn_predictions_delta.csv", index=False)
 
-    # Parity PDFs
     parity_plot_pdf(
         y_true=y_te_delta, y_pred=pred_delta,
         out_pdf=var_dir / "dnn_parity_delta.pdf",
@@ -356,12 +353,10 @@ def run_variant(variant_name: str, feat_cols: list) -> dict:
         annotate=f"MAE = {mae_dft_from_delta:.2f} kcal/mol\nR² = {r2_dft_from_delta:.2f}"
     )
 
-    # ============================================================
-    # B) Direct DFT (“normal ML”): tune on DFT, predict DFT directly
-    # ============================================================
+    # direct DFT: tune and predict DFT values directly without delta correction
     cv_mae_direct, bp_direct, model_direct, scaler_direct = tune_and_train("Direct DFT", y_tr_dft, out_prefix="dnn_direct_dft")
 
-    X_te_scaled2   = scaler_direct.transform(Xte_np)
+    X_te_scaled2    = scaler_direct.transform(Xte_np)
     pred_dft_direct = model_direct.predict(X_te_scaled2, verbose=0).reshape(-1)
     mae_dft_direct  = mean_absolute_error(y_te_dft, pred_dft_direct)
     r2_dft_direct   = r2_score(y_te_dft, pred_dft_direct)
@@ -378,38 +373,36 @@ def run_variant(variant_name: str, feat_cols: list) -> dict:
         annotate=f"MAE = {mae_dft_direct:.2f} kcal/mol\nR² = {r2_dft_direct:.2f}"
     )
 
-    # Save feature list
+    # saves the final feature list after pruning
     with open(var_dir / "features_after_prune.txt", "w") as f:
-        for c in Xtr_red.columns: f.write(c + "\n")
+        for c in Xtr_red.columns:
+            f.write(c + "\n")
 
-    # Save minimal artifacts for reload (weights + scalers + params)
-    # Note: saving full SavedModel twice can be heavy; keep light by weights + JSON.
-    arch_json_delta  = model_delta.to_json()
-    arch_json_direct = model_direct.to_json()
+    # saves model architecture, weights, and scalers for later reloading
     (var_dir / "artifacts").mkdir(exist_ok=True)
-    with open(var_dir / "artifacts/dnn_delta_arch.json", "w") as f:  f.write(arch_json_delta)
-    with open(var_dir / "artifacts/dnn_direct_arch.json", "w") as f: f.write(arch_json_direct)
+    with open(var_dir / "artifacts/dnn_delta_arch.json", "w") as f:
+        f.write(model_delta.to_json())
+    with open(var_dir / "artifacts/dnn_direct_arch.json", "w") as f:
+        f.write(model_direct.to_json())
     model_delta.save_weights(str(var_dir / "artifacts/dnn_delta_weights.h5"))
     model_direct.save_weights(str(var_dir / "artifacts/dnn_direct_weights.h5"))
-    # Save scalers
+
     import joblib
     joblib.dump(scaler_delta,  var_dir / "artifacts/dnn_delta_scaler.joblib")
     joblib.dump(scaler_direct, var_dir / "artifacts/dnn_direct_scaler.joblib")
 
-    # Combined metrics for this variant
+    # collects all metrics for this variant into a single dict
     metrics = {
-        "variant": variant_name,
-        "target_col": tcol,
-        "n_features_after_prune": int(n_features),
-
-        "delta_cv_mae": float(cv_mae_delta),
-        "delta_test_mae_delta": float(mae_delta),
-        "delta_test_mae_dft": float(mae_dft_from_delta),
-        "delta_test_r2_dft": float(r2_dft_from_delta),
-
-        "direct_cv_mae": float(cv_mae_direct),
-        "direct_test_mae_dft": float(mae_dft_direct),
-        "direct_test_r2_dft": float(r2_dft_direct),
+        "variant":                   variant_name,
+        "target_col":                tcol,
+        "n_features_after_prune":    int(n_features),
+        "delta_cv_mae":              float(cv_mae_delta),
+        "delta_test_mae_delta":      float(mae_delta),
+        "delta_test_mae_dft":        float(mae_dft_from_delta),
+        "delta_test_r2_dft":         float(r2_dft_from_delta),
+        "direct_cv_mae":             float(cv_mae_direct),
+        "direct_test_mae_dft":       float(mae_dft_direct),
+        "direct_test_r2_dft":        float(r2_dft_direct),
     }
     with open(var_dir / "metrics.json", "w") as f:
         json.dump(metrics, f, indent=2)
@@ -419,14 +412,12 @@ def run_variant(variant_name: str, feat_cols: list) -> dict:
 
     return metrics
 
-# -----------------------------
-# Run requested variants
-# -----------------------------
+
+# runs each requested variant and saves a top-level summary JSON
 all_metrics = []
 for vname, vcols in VARIANTS:
     all_metrics.append(run_variant(vname, vcols))
 
-# Write top-level summary
 summary_path = Path(args.output_dir) / "DNN_summary.json"
 with open(summary_path, "w") as f:
     json.dump({"variants": all_metrics}, f, indent=2)
