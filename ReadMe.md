@@ -33,16 +33,15 @@ Many computational chemistry methods sit on a spectrum between speed and accurac
 
 **Delta-Learning (Δ-learning)** bridges this gap. Instead of training a model to predict a molecular property directly, it trains a model to predict the *error* of a cheap method relative to an expensive one:
 
-$$\Delta = \text{DFT value} - \text{PM7 value}$$
+$$\Delta E = E_{DFT value} - E_{PM7 value}$$
 
 Once trained, the model is applied as a correction:
 
-$$\text{Corrected prediction} = \text{PM7 value} + \hat{\Delta}$$
+$$\text{Corrected prediction} = E_{PM7 value} + {\Delta} E$$
 
-This repository targets two molecular properties:
+This repository targets the molecular property:
 
-- **Atomization Energy (AE)** — the energy required to break a molecule into its constituent atoms
-- **Enthalpy of Reaction (ΔH)** — the heat of reaction
+- **barrier Height (BH) Energy** — the energy required to break a molecule into its constituent atoms
 
 Both properties are predicted in **kcal/mol**. The pipeline also supports a **direct** mode, where the model is trained to predict the DFT value outright without a PM7 correction, and a **both** mode that runs delta and direct in a single job.
 
