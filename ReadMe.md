@@ -1,19 +1,6 @@
-# QDELTA
+# Quantum kernel-based delta (∆)-learning approach for correcting a semiempirical method in the prediction of reaction barrier heights
 
-A pipeline for applying quantum and classical ML to predict corrections to semiempirical (PM7) reaction barrier heights, targeting DFT-level accuracy via delta (Δ)-learning.
-
----
-
-## How it works
-
-Rather than predicting barrier heights directly, models are trained to predict the error between PM7 and DFT calculations:
-
-```
-ΔE = E_DFT − E_PM7
-Corrected prediction = E_PM7 + ΔE
-```
-
-The pipeline supports both **delta** mode (learn the correction) and **direct** mode (predict DFT values outright).
+A repository for applying quantum and classical machine learning to predict corrections to semiempirical (PM7) reaction barrier heights, targeting DFT-level accuracy via delta (Δ)-learning.
 
 ---
 
