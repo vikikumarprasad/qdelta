@@ -56,12 +56,6 @@ From: ubuntu:22.04
     # Install TensorFlow for deep learning
     pip3 install --no-cache-dir tensorflow==2.13.0
 
-# --- ADD THIS SECTION ---
-%files
-    # Copy your entire CML_Models directory into the /app directory inside the container
-    # Make sure this source path is correct for your system
-    /home/armaank/projects/def-vikikrpd/armaank/Code_Files/CML_Models /app
-
 %environment
     export PYTHONUNBUFFERED=1
     export MPLCONFIGDIR=/tmp/matplotlib
