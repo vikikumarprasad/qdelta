@@ -93,10 +93,6 @@ def save_data_outputs(
 ):
     """
     Saves per-run predictions to CSV and appends one row to the master summary log.
-
-    Mode-aware column construction:
-      delta:  Predicted_DFT = PM7 + y_pred,  True_Delta = y_test,          Predicted_Delta = y_pred
-      direct: Predicted_DFT = y_pred,         True_Delta = DFT_true - PM7,  Predicted_Delta = y_pred - PM7
     """
     if mode == "delta":
         true_delta = y_test
@@ -196,11 +192,7 @@ def generate_results_pdfs(
     save_model_only=False,
     mode="delta"
 ):
-    """
-    Generates a DFT-space scatter PDF and optionally a model-only delta-space PDF.
 
-    Returns a dict with keys 'dft_pdf' and 'model_only_pdf'.
-    """
     tgt = _target_tag(args)
 
     if mode == "delta":
@@ -262,7 +254,6 @@ def generate_results_plot(
     final_metrics,
     mode="delta"
 ):
-    """Generates only the DFT-space scatter PDF for a given mode."""
     return generate_results_pdfs(
         fname_base, args, y_test, y_pred, pm7_test, dft_true, final_metrics,
         save_model_only=False, mode=mode
