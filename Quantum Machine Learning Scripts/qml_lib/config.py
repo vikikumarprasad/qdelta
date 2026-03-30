@@ -1,6 +1,5 @@
 # config.py
 # Central configuration for models, encodings, and optimizers.
-# All other modules import from here to stay consistent.
 
 from squlearn.encoding_circuit import (
     HubregtsenEncodingCircuit,
@@ -16,10 +15,6 @@ from .local_kernel import CPKernelWrapper
 
 
 class CustomQGPR(QGPR):
-    """
-    Subclass of QGPR that ensures GridSearchCV and custom tuners can set parameters reliably.
-    Maps the legacy 'alpha' argument to the correct 'sigma' parameter.
-    """
 
     def set_params(self, **params):
         if "alpha" in params and "sigma" not in params:
