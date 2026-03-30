@@ -11,24 +11,16 @@ from sklearn.metrics.pairwise import rbf_kernel
 from sklearn.gaussian_process.kernels import Kernel as _SKLearnKernel
 from sklearn.base import BaseEstimator, RegressorMixin
 
-
-# Module-level caches persist across CV folds; sklearn clones estimators per fold,
-# which would wipe any instance-level cache.
-
-_PAULI_CACHE    = {}   # circuit_key -> {x_bytes: Pauli expectation vector}
-_SV_CACHE       = {}   # circuit_key -> {x_bytes: statevector}
-_FQK_GRAM_CACHE = {}   # (circuit_key, data_hash) -> (S, K); kernel matrix only depends on circuit + data
+_PAULI_CACHE    = {}
+_SV_CACHE       = {}
+_FQK_GRAM_CACHE = {}
 
 
 def _data_fingerprint(X):
-    # hash array bytes for use as a dict key
     return hash(X.tobytes())
 
 
 def _circuit_key(feature_map, random_seed):
-    # uniquely identifies a circuit by class, size, layers, and seed;
-    # num_layers is included because CPKernelWrapper with different reps
-    # produces different circuits even with the same num_parameters
     return (
         feature_map.__class__.__name__,
         int(feature_map.num_features),
@@ -43,10 +35,6 @@ def clear_simulation_cache():
     _SV_CACHE.clear()
     _FQK_GRAM_CACHE.clear()
 
-
-# Base class for both kernel types.
-# Builds the Qiskit circuit from an sQUlearn encoding map and implements
-# the abstract Kernel interface required by sklearn's GaussianProcessRegressor.
 class _FastKernelBase(_SKLearnKernel):
 
     def __init__(self, feature_map, random_seed=42):
@@ -61,14 +49,6 @@ class _FastKernelBase(_SKLearnKernel):
         if n_params > 0:
             p_syms = ParameterVector("p", n_params)
             raw_qc = feature_map.get_circuit(x_syms, p_syms)
-
-            # Prefer generate_initial_parameters if available (e.g. CPKernelWrapper),
-            # which returns design-specific defaults rather than random values.
-            # CPKernel's CMap/PMap operations are tuned to these defaults;
-            # random parameters cause near-Haar-random states where all Pauli
-            # expectations collapse to zero and the kernel degenerates.
-            # For IQPCircuitWrapper, generate_initial_parameters is absent so
-            # the random fallback below is used instead.
             initializer = getattr(feature_map, "generate_initial_parameters", None)
             if callable(initializer):
                 try:
@@ -85,7 +65,6 @@ class _FastKernelBase(_SKLearnKernel):
         else:
             self._circuit = feature_map.get_circuit(x_syms, [])
 
-        # circuit.parameters is always alphabetically sorted; build column mapping
         remaining      = list(self._circuit.parameters)
         name_to_col    = {f"x[{i}]": i for i in range(n_features)}
         self._feat_col = [name_to_col[p.name] for p in remaining]
@@ -100,9 +79,6 @@ class _FastKernelBase(_SKLearnKernel):
             for k in range(len(self._fparams))
         }
         return self._circuit.assign_parameters(bind_dict)
-
-    # sklearn Kernel ABC stubs — never called because optimizer=None for GPR
-    # and SVR/KRR operate on precomputed matrices
 
     @property
     def theta(self):
@@ -141,7 +117,7 @@ class FastFidelityKernel(_FastKernelBase):
 
         dim  = 2 ** self._n_qubits
         S    = np.empty((X.shape[0], dim), dtype=complex)
-        slot = _SV_CACHE.setdefault(self._ckey, {})   # per-circuit cache slot
+        slot = _SV_CACHE.setdefault(self._ckey, {})
         hits = 0
 
         for i, x_row in enumerate(X):
@@ -231,7 +207,7 @@ class FastProjectedKernel(_FastKernelBase):
             X = X.reshape(1, -1)
 
         vecs = np.empty((X.shape[0], self._n_paulis), dtype=float)
-        slot = _PAULI_CACHE.setdefault(self._ckey, {})   # per-circuit cache slot
+        slot = _PAULI_CACHE.setdefault(self._ckey, {})
         hits = 0
 
         for i, x_row in enumerate(X):
@@ -315,9 +291,6 @@ class FastProjectedKernel(_FastKernelBase):
         return (f"FastProjectedKernel(n_qubits={self._n_qubits}, "
                 f"n_paulis={self._n_paulis}, gamma_scale={self.gamma_scale:.4g})")
 
-
-# Wraps a fast quantum kernel as an sklearn estimator so the tuner can
-# find and tune all hyperparameters via get_params / set_params.
 class FastKernelRegressor(BaseEstimator, RegressorMixin):
 
     def __init__(
@@ -325,12 +298,12 @@ class FastKernelRegressor(BaseEstimator, RegressorMixin):
         pqc,
         model_type,
         kernel_type,
-        gamma=1.0,        # RBF bandwidth scale (projected kernel only)
-        sigma=0.1,        # noise std for GPR; passed as alpha = sigma^2
+        gamma=1.0,
+        sigma=0.1,
         normalize_y=True,
-        C=1.0,            # regularisation for SVR
-        epsilon=0.1,      # tube half-width for SVR
-        alpha=1e-6,       # regularisation for KRR
+        C=1.0,
+        epsilon=0.1,
+        alpha=1e-6,
         random_seed=42,
     ):
         self.pqc         = pqc
@@ -366,7 +339,6 @@ class FastKernelRegressor(BaseEstimator, RegressorMixin):
         self._kernel_obj = self._make_kernel()
 
         if self.model_type in ("qsvr", "qkrr"):
-            # precomputed path: build the full kernel matrix once, then pass as array
             self._ref_data, K_train = self._kernel_obj.compute_gram(X)
 
             if self.model_type == "qsvr":
@@ -379,8 +351,7 @@ class FastKernelRegressor(BaseEstimator, RegressorMixin):
             self._inner.fit(K_train, y)
 
         else:
-            # GPR does not support precomputed kernels; pass the kernel object directly.
-            # optimizer=None prevents GPR from trying gradient-based kernel optimisation.
+
             from sklearn.gaussian_process import GaussianProcessRegressor
             self._inner = GaussianProcessRegressor(
                 kernel=self._kernel_obj,
@@ -413,7 +384,7 @@ def create_model_from_params(args, params):
         return model_fn(args, params, **extra_args)
 
     if args.reencoding_type == "parallel":
-        # parallel re-encoding collapses to a single layer by design
+
         num_layers   = 1
         num_features = 1
         if params.get("num_layers", 1) > 1:
@@ -447,7 +418,6 @@ def create_model_from_params(args, params):
                 random_seed=int(args.seed),
             )
 
-        # legacy sQUlearn path — only reached if kernel is not fidelity or projected
         else:
             kernel_optimizer_instance = None
 
