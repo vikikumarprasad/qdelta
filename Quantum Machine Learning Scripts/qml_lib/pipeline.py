@@ -13,25 +13,10 @@ from .models import create_model_from_params, clear_simulation_cache
 from .tuning import tune_model
 from .reporting import save_data_outputs, generate_results_plot
 
-
-# Encodings that expect features in [-1, 1]
-# (ChebyshevPQC uses arccos(x); IQP multiplies by π/4 internally)
 _UNIT_RANGE_ENCODINGS = {"chebyshev", "iqp"}
 
 
-def _feature_range_for_encoding(args) -> tuple:
-    """
-    Return the correct MinMaxScaler output range for the requested encoding.
-
-    Rotation-gate encodings (YZ_CX, HighDim, Hubregtsen, MultiControl,
-    ParamZ, CPKernel) use raw Ry/Rz/P gates: input goes directly into the
-    rotation angle.  Scaling to [-1, 1] means only 1/π ≈ 32% of the
-    available rotation range is used.  Scaling to [-π, π] gives full
-    coverage of the Bloch sphere — maximum expressibility.
-
-    Chebyshev and IQP handle their own internal scaling, so [-1, 1] is
-    the correct raw input range for them.
-    """
+def _feature_range_for_encoding(args):
     enc = (getattr(args, "encoding", "") or "").lower()
     model = args.model.lower()
     if enc in _UNIT_RANGE_ENCODINGS or model in ("qnn-iqp",):
@@ -40,7 +25,6 @@ def _feature_range_for_encoding(args) -> tuple:
 
 
 def run_pipeline(args):
-    """Runs the entire QML pipeline from data loading to saving results."""
     print(f"--- Starting QML Pipeline: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---")
 
     if args.model in ["qnn-cpmap", "qnn-iqp"]:
@@ -70,17 +54,10 @@ def run_pipeline(args):
 
     fair_direct = bool(getattr(args, "fair_direct", False))
 
-    # Determine correct feature range once (same for all modes in a run)
     feature_range = _feature_range_for_encoding(args)
     print(f"Feature range selected: {feature_range}  (encoding='{getattr(args, 'encoding', 'N/A')}')")
 
     for mode in modes_to_run:
-        # ── Clear simulation cache between modes ──────────────────────
-        # Each mode uses the same X (same feature values, same circuit) so
-        # the cache is actually VALID across modes.  We clear it only if
-        # running 'both' modes AND the feature set changes between them
-        # (fairness drop).  For safety we always clear between mode passes
-        # so stale entries from a different fold structure can't leak.
         if mode != modes_to_run[0]:
             clear_simulation_cache()
             print("[Pipeline] Cleared simulation cache for new mode pass.")
@@ -110,7 +87,6 @@ def run_pipeline(args):
                             "after fairness drop. Disable fairness or choose a single feature."
                         )
 
-        # 1. Load data
         label = "delta" if mode == "delta" else "dft"
         X_train, X_test, y_train, y_test, pm7_test, dft_true = load_data(
             args.data_dir,
@@ -121,29 +97,11 @@ def run_pipeline(args):
             args.seed,
             target=getattr(args, "target", "ae"),
             label=label,
-            feature_range=feature_range,    # ← pass correct range
+            feature_range=feature_range,
         )
         args.input_dim = X_train.shape[1]
         print(f"[{mode}] Using features: {features_local} (qubits={args.qubits})")
 
-        # 2. Target scaling
-        #
-        # QSVR and QKRR (delta mode): do NOT scale y.
-        #   epsilon and alpha are searched in raw kcal/mol units.
-        #   epsilon range is (1e-4, 1.0) kcal/mol — physically correct.
-        #   If y were scaled to std=1 and epsilon stayed at 1.0 (upper bound),
-        #   the tube would span ±1 standard deviation, putting 68% of training
-        #   samples inside the dead zone. SVR would learn from only the 32%
-        #   most extreme points and predict close to the mean everywhere else.
-        #   Observed symptom: Chebyshev 9Q MAE jumped from ~5.1 to ~7.7 kcal/mol.
-        #
-        # QGPR (delta mode): do NOT scale y externally.
-        #   GaussianProcessRegressor has normalize_y=True which rescales y
-        #   internally. External scaling would double-scale.
-        #
-        # Direct mode and QNNs: scale y.
-        #   Direct mode targets (raw DFT values) have much larger scale.
-        #   QNNs need unit-variance targets for stable gradient-based training.
         scale_y = (
             mode == "direct"
             or args.model in ["qnn-cpmap", "qnn-iqp"]
@@ -156,13 +114,10 @@ def run_pipeline(args):
             y_scaler = None
             y_train_for_fitting = y_train
 
-        # 3. Hyperparameter tuning setup
-        # Select the kernel-specific search space so fidelity jobs don't
-        # waste a search dimension on gamma (which has no effect on FQK).
         kernel_type = getattr(args, "kernel", "projected")
-        config_key  = f"{args.model}_{kernel_type}"   # e.g. "qsvr_fidelity"
+        config_key  = f"{args.model}_{kernel_type}" 
         if config_key not in MODEL_CONFIG:
-            config_key = args.model                    # fallback to legacy key
+            config_key = args.model                  
         _, search_space, *_ = MODEL_CONFIG[config_key]
         search_space = search_space.copy()
 
@@ -176,7 +131,7 @@ def run_pipeline(args):
         if getattr(args, "train_kernel", False) and args.model in ["qsvr", "qkrr", "qgpr"]:
             search_space["lr"] = ("loguniform", 1e-4, 1e-1)
 
-        # 4. Tune + train
+
         best_params = tune_model(args, search_space, X_train, y_train_for_fitting)
         print("\n3. Training Final Model")
         print(f"Best settings found: {best_params}")
@@ -184,7 +139,7 @@ def run_pipeline(args):
         layers_used = int(best_params.get("num_layers", args.layers))
         final_model = create_model_from_params(args, best_params)
 
-        # CPKernel qubit count inspection (unchanged)
+
         is_cpkernel = (args.model == "qnn-cpmap") or (args.encoding == "cpkernel")
         if is_cpkernel:
             try:
@@ -202,7 +157,6 @@ def run_pipeline(args):
 
         final_model.fit(X_train, y_train_for_fitting)
 
-        # 5. Predictions + inverse transform
         y_pred_test_scaled  = final_model.predict(X_test)
         y_pred_train_scaled = final_model.predict(X_train)
 
@@ -214,7 +168,6 @@ def run_pipeline(args):
             y_pred_test  = y_pred_test_scaled
             y_pred_train = y_pred_train_scaled
 
-        # 6. Evaluation
         dft_pred     = y_pred_test + pm7_test if mode == "delta" else y_pred_test
         baseline_mae = mean_absolute_error(dft_true, pm7_test)
         final_mae    = mean_absolute_error(dft_true, dft_pred)
@@ -235,7 +188,6 @@ def run_pipeline(args):
         test_mse  = float(mean_squared_error(y_test, y_pred_test))
         train_mse = float(mean_squared_error(y_train, y_pred_train))
 
-        # 7. Output paths
         config_parts = [args.model.upper()]
         if args.model not in ["qnn-cpmap", "qnn-iqp"] and args.encoding:
             config_parts.append(args.encoding)
