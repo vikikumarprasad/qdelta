@@ -1,14 +1,9 @@
 # qml_lib/local_kernel.py
-# CPKernelWrapper: adapts CPKernel for use as an EncodingCircuitBase in sQUlearn.
 
 from squlearn.encoding_circuit.encoding_circuit_base import EncodingCircuitBase
 from .custom.kernel import CPKernel
 import numpy as np
 
-
-# Original CPKernel design defaults — produce a well-structured kernel across all reps.
-# Random initialisation drives states toward Haar-random for reps >= 2,
-# collapsing all Pauli expectations to zero and making the kernel matrix constant.
 _CP_DEFAULT_PARAMS = np.array([
     -np.pi / 3,   # alpha
      np.pi / 6,   # beta
