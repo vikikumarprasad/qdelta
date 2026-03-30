@@ -21,10 +21,6 @@ def load_data(
     label: str = "delta",
     feature_range: tuple = (-np.pi, np.pi),
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    # feature_range is set by pipeline.py based on encoding circuit:
-    #   (-np.pi, np.pi) → YZ_CX, HighDim, Hubregtsen, MultiControl, ParamZ, CPKernel
-    #   (-1.0,   1.0)   → ChebyshevPQC (uses arccos internally), IQP (multiplies by π/4 and π/2)
-    # returns: X_train, X_test, y_train, y_test, pm7_test, dft_true
 
     print("1. Loading & Preparing Data")
     train_path = os.path.join(data_dir, "train_df_new.csv")
