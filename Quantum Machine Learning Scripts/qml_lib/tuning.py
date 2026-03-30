@@ -1,5 +1,5 @@
 # qml_lib/tuning.py
-# Hyperparameter tuning for all supported tuners with safe and efficient defaults.
+# Hyperparameter tuning for all supported tuners
 
 from typing import Any, Dict, Iterable, List
 import numpy as np
@@ -163,12 +163,10 @@ def tune_model(args, search_space: Dict[str, Any], X_train, y_train):
             return float("inf")
         return float(np.mean(scores))
 
-    # ── No tuning ────────────────────────────────────────────────────
     if args.tuner == "none":
         print("No tuning selected, using default parameters.")
         return {}
 
-    # ── Grid Search ──────────────────────────────────────────────────
     if args.tuner == "grid":
         print("Starting GridSearchCV...")
         grid_space = dict(search_space)
@@ -194,7 +192,6 @@ def tune_model(args, search_space: Dict[str, Any], X_train, y_train):
         grid_points = getattr(args, "grid_points", 7)
         grid_space  = {k: _grid_points_from_spec(v, default_num=grid_points) for k, v in grid_space.items()}
 
-        # filter to keys actually accepted by the estimator
         model_for_keys = create_model_from_params(args, {})
         valid_keys     = set(model_for_keys.get_params(deep=False).keys())
         grid_space     = {k: v for k, v in grid_space.items() if k in valid_keys}
@@ -257,7 +254,6 @@ def tune_model(args, search_space: Dict[str, Any], X_train, y_train):
 
         return best_params
 
-    # ── Optuna ───────────────────────────────────────────────────────
     if args.tuner == "optuna":
         def optuna_objective(trial):
             params: Dict[str, Any] = {}
@@ -283,7 +279,6 @@ def tune_model(args, search_space: Dict[str, Any], X_train, y_train):
         print(f"Optuna best MAE: {study.best_value:.4f}")
         return study.best_params
 
-    # ── skopt (BayesSearchCV) ────────────────────────────────────────
     if args.tuner == "skopt":
         model_name = getattr(args, "model", "").lower()
         estimator  = create_model_from_params(args, {})
@@ -314,8 +309,6 @@ def tune_model(args, search_space: Dict[str, Any], X_train, y_train):
             if "encoding_circuit" in valid_keys:
                 sk_space["encoding_circuit"] = Categorical(enc_candidates)
 
-        # gamma is a first-class FastKernelRegressor parameter and is included
-        # via valid_keys; do not pop and handle it separately
         space_src = {k: v for k, v in space_src.items() if k in valid_keys}
         for name, spec in space_src.items():
             if not isinstance(spec, (list, tuple)) or len(spec) < 1:
@@ -344,7 +337,7 @@ def tune_model(args, search_space: Dict[str, Any], X_train, y_train):
         n_init_raw     = max(8, 2 * len(sk_space) + 2)
         n_init         = 1
         while n_init < n_init_raw:
-            n_init <<= 1   # round up to the next power of two for sobol compatibility
+            n_init <<= 1
 
         opt = BayesSearchCV(
             estimator=estimator,
@@ -374,7 +367,7 @@ def tune_model(args, search_space: Dict[str, Any], X_train, y_train):
         )
         with parallel_backend(backend_choice, n_jobs=n_jobs):
             callbacks = [
-                # stop early if best score hasn't improved by 0.005 kcal/mol over 15 trials
+                
                 DeltaYStopper(delta=5e-3, n_best=15),
             ]
             if getattr(args, "time_budget_min", None):
@@ -385,7 +378,6 @@ def tune_model(args, search_space: Dict[str, Any], X_train, y_train):
         print(f"Skopt best MAE: {-opt.best_score_:.4f}")
         return best_params
 
-    # ── Ray Tune ─────────────────────────────────────────────────────
     if args.tuner == "raytune":
         import ray
         from ray import tune
