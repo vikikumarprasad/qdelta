@@ -1,5 +1,4 @@
 # HPC_QML.py
-# Main driver script for the QML analysis pipeline.
 
 import argparse
 import time
@@ -80,11 +79,6 @@ def main():
     start_time = time.time()
     args       = setup_arguments()
 
-    # FastKernelRegressor (fidelity/projected) holds only QuantumCircuit + numpy arrays,
-    # which are picklable, so n_jobs > 1 is safe with the 'threading' backend.
-    # The threading backend also keeps the module-level simulation caches
-    # (_PAULI_CACHE / _SV_CACHE) shared across workers rather than per-subprocess.
-    # The legacy sQUlearn path is not picklable, so force n_jobs=1 as a safety net.
     is_fast_kernel = (
         args.model in ("qsvr", "qkrr", "qgpr")
         and getattr(args, "kernel", "projected") in ("projected", "fidelity")
@@ -93,20 +87,6 @@ def main():
         if args.n_jobs != 1:
             print("[Legacy kernel] Forcing n_jobs=1 to avoid pickling errors.")
         args.n_jobs = 1
-
-    # fixed-feature-map QNN models do not use --encoding
-    if args.model in ["qnn-cpmap", "qnn-iqp"] and args.encoding is not None:
-        print(f"Warning: --encoding '{args.encoding}' is ignored for model '{args.model}'.")
-
-    # qnn-iqp requires sequential re-encoding and exactly one feature per qubit
-    if args.model == "qnn-iqp":
-        if args.reencoding_type != "sequential":
-            raise ValueError("qnn-iqp requires --reencoding_type sequential.")
-        if len(args.features) != args.qubits:
-            raise ValueError(
-                f"qnn-iqp requires exactly {args.qubits} features (one per qubit); "
-                f"got {len(args.features)}."
-            )
 
     run_pipeline(args)
 
