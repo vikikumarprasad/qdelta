@@ -1,5 +1,4 @@
 # utility.py
-# Helper classes for CPKernel circuit construction and qubit mapping.
 
 
 class MetaFibonacci:
@@ -11,7 +10,7 @@ class MetaFibonacci:
         self._generate_sequence()
 
     def _generate_sequence(self):
-        # extends the sequence up to the nth term using the meta-Fibonacci recurrence
+
         for i in range(3, self.n + 1):
             next_term = self.sequence[i - self.sequence[i - 3] - 2] + self.sequence[i - self.sequence[i - 2] - 1]
             self.sequence.append(next_term)
