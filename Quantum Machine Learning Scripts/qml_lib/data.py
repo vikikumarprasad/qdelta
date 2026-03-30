@@ -20,7 +20,7 @@ def load_data(
     target: str = "ae",
     label: str = "delta",
     feature_range: tuple = (-np.pi, np.pi),
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+):
 
     print("1. Loading & Preparing Data")
     train_path = os.path.join(data_dir, "train_df_new.csv")
@@ -55,7 +55,6 @@ def load_data(
     y_train = train_df[ycol_delta].values if label == "delta" else train_df[ycol_dft].values
     y_test  = test_df [ycol_delta].values if label == "delta" else test_df [ycol_dft].values
 
-    # resolve PM7 column name, falling back to any column containing 'pm7' or 'mopac'
     if pm7_default in test_df.columns:
         pm7_col = pm7_default
     else:
@@ -73,13 +72,11 @@ def load_data(
         if np.isnan(arr).any() or np.isinf(arr).any():
             raise ValueError(f"{name} contains NaN/Inf values. Please clean the dataset.")
 
-    # fit scaler on train only, then transform both splits
     scaler  = MinMaxScaler(feature_range=feature_range)
     X_train = scaler.fit_transform(X_train_df)
     X_test  = scaler.transform(X_test_df)
     print(f"Feature scaling: MinMaxScaler → {feature_range}")
 
-    # optional PCA on scaled features, fit on train only
     if pca_components is not None:
         if not isinstance(pca_components, int) or pca_components <= 0:
             raise ValueError("pca_components must be a positive integer")
@@ -90,7 +87,6 @@ def load_data(
         X_train = pca.fit_transform(X_train)
         X_test  = pca.transform(X_test)
 
-    # re-encoding shape checks
     if reencoding_type == "sequential":
         if X_train.shape[1] != num_qubits:
             raise ValueError(
@@ -106,7 +102,6 @@ def load_data(
     else:
         raise ValueError("reencoding_type must be 'sequential' or 'parallel'")
 
-    # clip to guard against numeric drift after PCA
     lo, hi = float(feature_range[0]), float(feature_range[1])
     np.clip(X_train, lo, hi, out=X_train)
     np.clip(X_test,  lo, hi, out=X_test)
