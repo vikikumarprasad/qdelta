@@ -14,11 +14,9 @@ class CPKernel:
         self.insert_barriers = insert_barriers
         self.CP_last_layer   = CP_last_layer
 
-        # default design parameters for CMap and PMap if none are provided
         if CP_params is None:
             CP_params = [-np.pi/3, np.pi/6, -np.pi/9, np.pi/7, np.pi/9, -np.pi/7]
 
-        # symbolic parameters kept as Parameter objects for the wrapper
         self.alpha  = Parameter("alpha")
         self.beta   = Parameter("beta")
         self.gamma  = Parameter("gamma")
@@ -33,7 +31,6 @@ class CPKernel:
         self.params       = ParameterVector("X", self.num_features)
 
     def cmap(self):
-        # 2-qubit gate inspired by the convolutional layer of QCNN
         q1 = QuantumRegister(1, "q1")
         q2 = QuantumRegister(1, "q2")
         target = QuantumCircuit(q1, q2, name="C-Map")
@@ -48,7 +45,6 @@ class CPKernel:
         return target
 
     def pmap(self):
-        # 2-qubit gate inspired by the pooling layer of QCNN
         q1 = QuantumRegister(1, "q1")
         q2 = QuantumRegister(1, "q2")
         target = QuantumCircuit(q1, q2, name="P-Map")
@@ -76,20 +72,20 @@ class CPKernel:
         for rep in range(self.reps):
             shift = 0
             for k in range(len(mapping_list_)):
-                # encode features into each qubit at this mapping level
+
                 for i in range(mapping_list_[k]):
                     qc.h(i)
                     qc.p(self.params[i + shift], i)
 
                 if mapping_list_[k] > last_rep:
-                    # apply CMap and PMap on all non-final layers
+
                     for j in CPaction(mapping_list_[k]).cmap_list():
                         qc.append(self.cmap(), j)
                     for l in CPaction(mapping_list_[k]).pmap_list():
                         qc.append(self.pmap(), l)
 
                 elif mapping_list_[k] == last_rep and last_rep > 1 and self.CP_last_layer:
-                    # optionally apply CMap and PMap on the final layer
+
                     for j in CPaction(mapping_list_[k]).cmap_list():
                         qc.append(self.cmap(), j)
                     for l in CPaction(mapping_list_[k]).pmap_list():
