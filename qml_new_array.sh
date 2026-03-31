@@ -70,7 +70,6 @@ qubits=${QUBITS_LIST[$cfg_idx]}
 layers=${LAYERS_LIST[$cfg_idx]}
 
 # selects the first N features from the master list where N equals the qubit count
-# edit this list to match your dataset's feature columns
 master_features=("feature_1" "feature_2" "feature_3" "feature_4" "feature_5" "feature_6" "feature_7" "feature_8" "feature_9")
 features_arg=$(IFS=" "; echo "${master_features[*]:0:$qubits}")
 
