@@ -22,8 +22,8 @@ NUM_FEATURES="${NUM_FEATURES:-all}"         # all | N (slices the master feature
 PCA_COMPONENTS="${PCA_COMPONENTS:-none}"    # none | int
 RUN_VARIANTS="${RUN_VARIANTS:-both}"        # all | q9 | both (GPR only)
 
-# paths — edit these to match your cluster setup
-BASE_DIR="/path/to/your/project"
+# paths — edit these to match cluster setup
+BASE_DIR="/path/to//project"
 DATA_DIR="$BASE_DIR/data"
 OUTPUT_ROOT="$BASE_DIR/outputs/CML_Models"
 SIF_PATH="$BASE_DIR/CML.sif"
@@ -76,7 +76,7 @@ if [ "$PCA_COMPONENTS" != "none" ]; then
 fi
 
 if [ "$NUM_FEATURES" != "all" ]; then
-  # edit this list to match your dataset's feature columns
+  # edit this list to match dataset's feature columns
   master_features=("feature_1" "feature_2" "feature_3" "feature_4" "feature_5" "feature_6" "feature_7" "feature_8" "feature_9")
   FEATURES_ARGS=(--feature_set)
   FEATURES_ARGS+=("${master_features[@]:0:${NUM_FEATURES}}")
