@@ -62,5 +62,5 @@ From: ubuntu:22.04
     export PATH="/usr/local/bin:$PATH"
 
 %runscript
-    echo "Apptainer container for classical"
+    echo "Apptainer container for classical models"
     echo "Run script using: python3 your_script.py"
