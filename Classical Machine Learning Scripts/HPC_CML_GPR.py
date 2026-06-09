@@ -1,6 +1,4 @@
 # HPC_CML_GPR.py
-# Gaussian Process Regressor for delta-learning and direct DFT prediction.
-# Supports ALL and Q9 feature variants with Optuna tuning, optional PCA, and PDF parity plots.
 
 import os, json, warnings, argparse, time, textwrap
 from pathlib import Path
@@ -27,7 +25,6 @@ import matplotlib.pyplot as plt
 
 warnings.filterwarnings("ignore")
 
-# matplotlib settings for paper-quality PDF output
 plt.rcParams.update({
     "pdf.fonttype": 42, "ps.fonttype": 42,
     "font.family": "DejaVu Serif",
@@ -38,33 +35,26 @@ plt.rcParams.update({
     "legend.frameon": False,
 })
 
-# fixed set of 9 physically meaningful features used in the Q9 variant
 Q9_FEATURES = [
-    "exp_mopac", "AE_mopac", "Par_n_Pople", "Mul", "ch_f",
-    "DH_Mopac", "ZPE_TS_R", "Freq", "ZPE_P_R"
+    "ch_f", "Mul", "ZPE_TS_P", "Freq", "lap_eig_1", "SMR_VSA9", "Par_n_Pople", "BalabanJ", "LabuteASA"
 ]
-
 
 def log(msg: str):
     """Prints a timestamped message to stdout."""
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"{ts} | {msg}", flush=True)
 
-
 def ensure_dir(p: Path) -> Path:
     """Creates a directory and all parents if they do not exist, then returns the path."""
     p.mkdir(parents=True, exist_ok=True)
     return p
 
-
 def beige_box_stats(ax, text: str):
-    """Adds a beige stats text box to the given axes."""
     ax.text(
         0.03, 0.97, text, transform=ax.transAxes,
         ha="left", va="top",
         bbox=dict(boxstyle="round,pad=0.35", facecolor="#f3e9d2", edgecolor="#d3c6a3", alpha=0.9)
     )
-
 
 def parity_plot_pdf(y_true, y_pred, out_pdf, xlabel, ylabel, title=None, mae=None, r2=None):
     """Saves a parity scatter plot with a dashed y=x line and a stats box to a PDF file."""
@@ -99,12 +89,9 @@ def parity_plot_pdf(y_true, y_pred, out_pdf, xlabel, ylabel, title=None, mae=Non
     fig.savefig(out_pdf, bbox_inches="tight", transparent=True)
     plt.close(fig)
 
-
 def corr90_prune(X_train: pd.DataFrame, X_test: pd.DataFrame, out_txt: Path):
     """
     Removes features with pairwise correlation above 0.90 using train-only statistics.
-
-    Returns the pruned train and test DataFrames and the list of dropped column names.
     """
     corr    = X_train.corr().abs()
     upper   = corr.where(np.triu(np.ones(corr.shape), k=1).astype(bool))
@@ -114,9 +101,8 @@ def corr90_prune(X_train: pd.DataFrame, X_test: pd.DataFrame, out_txt: Path):
             f.write(c + "\n")
     return X_train.drop(columns=to_drop), X_test.drop(columns=to_drop, errors="ignore"), to_drop
 
-
 def parse_pca_components(arg_val):
-    """Parses the --pca_components argument and returns an int or None."""
+    """Parses the pca_components argument and returns an int or None."""
     if isinstance(arg_val, str):
         if arg_val.lower() == "none":
             return None
@@ -130,14 +116,12 @@ def parse_pca_components(arg_val):
     except Exception:
         return None
 
-
 def make_preproc(seed: int, pca_n: int | None):
     """Builds a preprocessing pipeline with StandardScaler and optional PCA."""
     steps = [("scaler", StandardScaler())]
     if pca_n and pca_n > 0:
         steps.append(("pca", PCA(n_components=pca_n, random_state=seed)))
     return Pipeline(steps)
-
 
 def make_gpr(params: dict, seed: int):
     """Builds a GaussianProcessRegressor with a Constant * RBF + White kernel."""
@@ -154,14 +138,11 @@ def make_gpr(params: dict, seed: int):
         random_state=seed,
     )
 
-
 def tune_gpr(X: pd.DataFrame, y: np.ndarray,
              n_trials: int, folds: int, repeats: int, seed: int,
              pca_n: int | None, out_csv: Path):
     """
     Runs Optuna hyperparameter search for the GPR kernel using cross-validated MAE.
-
-    Returns the best CV MAE and the best parameter dict.
     """
     sampler = TPESampler(seed=seed, multivariate=True)
     pruner  = MedianPruner(n_startup_trials=10, n_warmup_steps=3)
@@ -197,7 +178,6 @@ def tune_gpr(X: pd.DataFrame, y: np.ndarray,
 
     return study.best_value, study.best_params
 
-
 def run_variant(variant_name: str,
                 X_train_full: pd.DataFrame,
                 X_test_full: pd.DataFrame,
@@ -208,9 +188,6 @@ def run_variant(variant_name: str,
                 summary_rows: list):
     """
     Runs delta-learning and direct DFT GPR training for one feature variant.
-
-    Applies correlation pruning, tunes with Optuna, fits final pipelines,
-    saves predictions, parity PDFs, a metrics JSON, and a Markdown report.
     """
     vdir = ensure_dir(root_out / variant_name)
     pdir = ensure_dir(vdir / "plots")
@@ -237,10 +214,10 @@ def run_variant(variant_name: str,
     tcol = args.target_col
     if tcol == "ae_delta":
         dft_col, pm7_col   = "ae_dft", "AE_mopac"
-        delta_label, dft_label = "ΔAE (kcal/mol)", "AE (kcal/mol)"
+        delta_label, dft_label = "delta-AE (kcal/mol)", "AE (kcal/mol)"
     elif tcol == "dh_delta":
         dft_col, pm7_col   = "dh_dft", "DH_Mopac"
-        delta_label, dft_label = "ΔH‡ (kcal/mol)", "H‡ (kcal/mol)"
+        delta_label, dft_label = "delta-dh (kcal/mol)", "DH (kcal/mol)"
     else:
         raise ValueError("target_col must be 'ae_delta' or 'dh_delta'.")
 
@@ -259,7 +236,7 @@ def run_variant(variant_name: str,
     y_te_dft   = test_df.loc[Xte.index, dft_col].values.ravel()
     pm7_base   = test_df.loc[Xte.index, pm7_col].values.ravel()
 
-    # delta-learning: tune on delta, fit final pipeline, reconstruct DFT = PM7 + delta
+    # delta-learning
     cv_mae_delta, best_params_delta = tune_gpr(
         X=Xtr, y=y_tr_delta, n_trials=args.n_trials,
         folds=args.cv_folds, repeats=args.cv_repeats, seed=args.seed,
@@ -273,9 +250,9 @@ def run_variant(variant_name: str,
 
     t0 = time.time()
     pipe_delta.fit(Xtr.values, y_tr_delta)
-    log(f"[{variant_name} | Δ] Final fit time: {time.time() - t0:.1f}s")
+    log(f"[{variant_name} | delta] Final fit time: {time.time() - t0:.1f}s")
     try:
-        log(f"[{variant_name} | Δ] Learned kernel: {pipe_delta.named_steps['gpr'].kernel_}")
+        log(f"[{variant_name} | delta] Learned kernel: {pipe_delta.named_steps['gpr'].kernel_}")
     except Exception:
         pass
 
@@ -286,7 +263,7 @@ def run_variant(variant_name: str,
     mae_dft_from_delta = mean_absolute_error(y_te_dft, pred_dft_from_delta)
     r2_dft_from_delta  = r2_score(y_te_dft, pred_dft_from_delta)
 
-    # direct DFT: tune on DFT values directly, fit final pipeline, predict DFT
+    # direct DFT
     cv_mae_direct, best_params_direct = tune_gpr(
         X=Xtr, y=y_tr_dft, n_trials=args.n_trials,
         folds=args.cv_folds, repeats=args.cv_repeats, seed=args.seed,
@@ -369,7 +346,7 @@ def run_variant(variant_name: str,
 
     summary_rows.append(metrics)
 
-    # writes a minimal Markdown report summarising results and artifact paths
+    # writes a Markdown report summarising results
     report = textwrap.dedent(f"""
     # GPR Report — Variant: {variant_name}
 
@@ -377,16 +354,16 @@ def run_variant(variant_name: str,
     **Target:** {tcol}
     **PCA components:** {(args.pca_n if args.pca_n else "none")}
 
-    ## Δ-learning
-    - CV MAE (Δ): {cv_mae_delta:.4f}
-    - Test MAE (Δ): {mae_delta:.4f}
-    - Test MAE (DFT = PM7 + Δ): {mae_dft_from_delta:.4f}
-    - Test R²  (DFT = PM7 + Δ): {r2_dft_from_delta:.4f}
+    ## delta-learning
+    - CV MAE (delta): {cv_mae_delta:.4f}
+    - Test MAE (delta): {mae_delta:.4f}
+    - Test MAE (DFT = PM7 + delta): {mae_dft_from_delta:.4f}
+    - Test R2  (DFT = PM7 + delta): {r2_dft_from_delta:.4f}
 
     ## Direct DFT
     - CV MAE (DFT): {cv_mae_direct:.4f}
     - Test MAE (DFT): {mae_dft_direct:.4f}
-    - Test R²  (DFT): {r2_dft_direct:.4f}
+    - Test R2  (DFT): {r2_dft_direct:.4f}
 
     ## Artifacts
     - Plots: `plots/gpr_parity_delta_only.pdf`, `plots/gpr_parity_dft_from_delta.pdf`, `plots/gpr_parity_direct_dft.pdf`
