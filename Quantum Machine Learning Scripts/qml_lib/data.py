@@ -75,7 +75,7 @@ def load_data(
     scaler  = MinMaxScaler(feature_range=feature_range)
     X_train = scaler.fit_transform(X_train_df)
     X_test  = scaler.transform(X_test_df)
-    print(f"Feature scaling: MinMaxScaler → {feature_range}")
+    print(f"Feature scaling: MinMaxScaler: {feature_range}")
 
     if pca_components is not None:
         if not isinstance(pca_components, int) or pca_components <= 0:
