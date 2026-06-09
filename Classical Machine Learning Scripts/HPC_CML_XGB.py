@@ -35,7 +35,7 @@ OUT.mkdir(parents=True, exist_ok=True)
 np.random.seed(args.seed)
 
 plt.rcParams.update({
-    "pdf.fonttype": 42, "ps.fonttype": 42,       # embed TrueType
+    "pdf.fonttype": 42, "ps.fonttype": 42,
     "font.family": "DejaVu Serif",
     "font.size": 11, "axes.linewidth": 1.0, "axes.labelsize": 12,
     "axes.titlesize": 12, "xtick.direction": "in", "ytick.direction": "in",
@@ -53,8 +53,8 @@ BEST_HP = {
     "gamma": 3.590765443858655e-05,
     "min_child_weight": 20.586964083896493,
     "objective": "reg:squarederror",
-    "tree_method": "hist",    # switch to "gpu_hist" if you run on GPU
-    "n_estimators": 20000,    # large cap; early stopping will trim
+    "tree_method": "hist",
+    "n_estimators": 20000,
     "n_jobs": -1,
 }
 
@@ -92,8 +92,7 @@ def parity_plot_pdf(
     plt.close(fig)
 
     return {"r2": float(r2), "mae": float(mae), "sd": sd}
-
-
+  
 train_df = pd.read_csv(DATA / "train_df_new.csv", index_col=0)
 test_df  = pd.read_csv(DATA / "test_df_new.csv",  index_col=0)
 train_df.columns = train_df.columns.str.strip()
@@ -156,7 +155,7 @@ def run_variant(variant: str, q9_list: list[str] | None = None) -> dict:
         **BEST_HP, random_state=args.seed, eval_metric="mae",
         early_stopping_rounds=300, enable_categorical=False,
     )
-    print(f"\n[{variant} | Δ] Training Δ-learning (ES on train/val)...", flush=True)
+    print(f"\n({variant}/delta) Training delta-learning (ES on train/val)...", flush=True)
     xg_delta.fit(X_tr, y_tr, eval_set=[(X_val, y_val)], verbose=True)
     best_n_delta = (xg_delta.best_iteration + 1) if xg_delta.best_iteration is not None else BEST_HP["n_estimators"]
 
@@ -192,22 +191,22 @@ def run_variant(variant: str, q9_list: list[str] | None = None) -> dict:
         plt.savefig(d_plots / "xgb_shap_delta.pdf", bbox_inches="tight", transparent=True)
         plt.close()
     except Exception as e:
-        print(f"[{variant} | Δ] SHAP skipped: {e}", flush=True)
+        print(f"({variant}/delta) SHAP skipped: {e}", flush=True)
 
     metrics_delta_dft = parity_plot_pdf(
         y_true=true_dft, y_pred=pred_dft_from_delta,
         out_pdf=d_plots / "xgb_parity_dft_from_delta.pdf",
-        xlabel="Reference ΔH (kcal/mol) [DFT]",
-        ylabel="Predicted ΔH (kcal/mol) [PM7 + Δ-XGB]",
-        title=f"XGB | Δ-learning | {variant.upper()}"
+        xlabel="Reference delta-dft (kcal/mol) [DFT]",
+        ylabel="Predicted delta-dft (kcal/mol) [PM7 + delta-XGB]",
+        title=f"XGB | delta-learning | {variant.upper()}"
     )
 
     parity_plot_pdf(
         y_true=y_test_delta, y_pred=pred_delta,
         out_pdf=d_plots / "xgb_parity_delta_only.pdf",
-        xlabel="Reference Δ (kcal/mol)",
-        ylabel="Predicted Δ (kcal/mol)",
-        title=f"XGB | Δ target | {variant.upper()}"
+        xlabel="Reference delta (kcal/mol)",
+        ylabel="Predicted delta (kcal/mol)",
+        title=f"XGB | delta-target | {variant.upper()}"
     )
 
     y_train_dft = train_df.loc[Xtr.index, "ae_dft"].values.ravel()
@@ -219,7 +218,7 @@ def run_variant(variant: str, q9_list: list[str] | None = None) -> dict:
         **BEST_HP, random_state=args.seed, eval_metric="mae",
         early_stopping_rounds=300, enable_categorical=False,
     )
-    print(f"\n[{variant} | DFT] Training direct-DFT (ES on train/val)...", flush=True)
+    print(f"\n({variant}/DFT) Training direct-DFT (ES on train/val)...", flush=True)
     xg_direct.fit(X_tr2, y_tr2, eval_set=[(X_val2, y_val2)], verbose=True)
     best_n_direct = (xg_direct.best_iteration + 1) if xg_direct.best_iteration is not None else BEST_HP["n_estimators"]
 
@@ -249,13 +248,13 @@ def run_variant(variant: str, q9_list: list[str] | None = None) -> dict:
         plt.savefig(d_plots / "xgb_shap_direct.pdf", bbox_inches="tight", transparent=True)
         plt.close()
     except Exception as e:
-        print(f"[{variant} | DFT] SHAP skipped: {e}", flush=True)
+        print(f"({variant}/DFT) SHAP skipped: {e}", flush=True)
 
     metrics_direct = parity_plot_pdf(
         y_true=y_test_dft, y_pred=pred_dft_direct,
         out_pdf=d_plots / "xgb_parity_direct_dft.pdf",
-        xlabel="Reference ΔH (kcal/mol) [DFT]",
-        ylabel="Predicted ΔH (kcal/mol) [XGB]",
+        xlabel="Reference delta-dft (kcal/mol) [DFT]",
+        ylabel="Predicted delta-dft (kcal/mol) [XGB]",
         title=f"XGB | Direct DFT | {variant.upper()}"
     )
 
@@ -283,14 +282,14 @@ def run_variant(variant: str, q9_list: list[str] | None = None) -> dict:
     md = []
     md.append(f"# XGB Results — {variant.upper()}\n")
     md.append(f"- Features after pruning: **{Xtr.shape[1]}** (dropped {len(to_drop)})\n")
-    md.append("## Δ-learning (DFT = PM7 + Δ)\n")
-    md.append(f"- Best trees: **{best_n_delta}**\n- Test MAE (Δ): **{mae_delta:.3f}** kcal/mol\n"
-              f"- Test MAE (DFT from Δ): **{metrics_delta_dft['mae']:.3f}** kcal/mol\n"
-              f"- Test R²  (DFT from Δ): **{metrics_delta_dft['r2']:.3f}**\n"
-              f"- Test SD  (DFT from Δ residuals): **{metrics_delta_dft['sd']:.3f}** kcal/mol\n")
+    md.append("## delta-learning (DFT = PM7 + delta)\n")
+    md.append(f"- Best trees: **{best_n_delta}**\n- Test MAE (delta): **{mae_delta:.3f}** kcal/mol\n"
+              f"- Test MAE (DFT from delta): **{metrics_delta_dft['mae']:.3f}** kcal/mol\n"
+              f"- Test R2  (DFT from delta): **{metrics_delta_dft['r2']:.3f}**\n"
+              f"- Test SD  (DFT from delta residuals): **{metrics_delta_dft['sd']:.3f}** kcal/mol\n")
     md.append("\n## Direct DFT\n")
     md.append(f"- Best trees: **{best_n_direct}**\n- Test MAE (DFT): **{metrics_direct['mae']:.3f}** kcal/mol\n"
-              f"- Test R²  (DFT): **{metrics_direct['r2']:.3f}**\n"
+              f"- Test R2  (DFT): **{metrics_direct['r2']:.3f}**\n"
               f"- Test SD  (DFT residuals): **{metrics_direct['sd']:.3f}** kcal/mol\n")
     (d_meta / "REPORT.md").write_text("\n".join(md))
 
