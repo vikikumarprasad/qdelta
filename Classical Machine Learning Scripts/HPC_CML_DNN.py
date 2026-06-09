@@ -240,7 +240,7 @@ def run_variant(variant_name: str, feat_cols: list) -> dict:
                 es    = EarlyStopping(monitor="val_loss", patience=20, restore_best_weights=True, verbose=0)
                 rlrop = ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=10, min_lr=1e-5, verbose=0)
 
-                model.fit(X_A, y_A, validation_data=(XB_s, y_B),
+                model.fit(XA_s, y_A, validation_data=(XB_s, y_B),
                           epochs=epochs, batch_size=batch_size, verbose=0,
                           callbacks=[es, rlrop])
 
