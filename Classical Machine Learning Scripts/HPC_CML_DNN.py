@@ -307,7 +307,7 @@ def run_variant(variant_name: str, feat_cols: list) -> dict:
         return study.best_value, bp, model, scaler_final
 
     # delta-learning
-    cv_mae_delta, bp_delta, model_delta, scaler_delta = tune_and_train("Δ-learning", y_tr_delta, out_prefix="dnn_delta")
+    cv_mae_delta, bp_delta, model_delta, scaler_delta = tune_and_train("delta-learning", y_tr_delta, out_prefix="dnn_delta")
 
     X_te_scaled         = scaler_delta.transform(Xte_np)
     pred_delta          = model_delta.predict(X_te_scaled, verbose=0).reshape(-1)
@@ -335,7 +335,7 @@ def run_variant(variant_name: str, feat_cols: list) -> dict:
         y_true=y_te_dft, y_pred=pred_dft_from_delta,
         out_pdf=var_dir / "dnn_parity_dft_from_delta.pdf",
         xlabel=f"Predicted {dft_lbl}", ylabel=f"True {dft_lbl}",
-        annotate=f"MAE = {mae_dft_from_delta:.2f} kcal/mol\nR² = {r2_dft_from_delta:.2f}"
+        annotate=f"MAE = {mae_dft_from_delta:.2f} kcal/mol\nR2 = {r2_dft_from_delta:.2f}"
     )
 
     # direct DFT
@@ -354,7 +354,7 @@ def run_variant(variant_name: str, feat_cols: list) -> dict:
         y_true=y_te_dft, y_pred=pred_dft_direct,
         out_pdf=var_dir / "dnn_parity_direct_dft.pdf",
         xlabel=f"Predicted {dft_lbl}", ylabel=f"True {dft_lbl}",
-        annotate=f"MAE = {mae_dft_direct:.2f} kcal/mol\nR² = {r2_dft_direct:.2f}"
+        annotate=f"MAE = {mae_dft_direct:.2f} kcal/mol\nR2 = {r2_dft_direct:.2f}"
     )
 
     # saves the final feature list after pruning
