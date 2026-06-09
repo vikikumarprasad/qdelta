@@ -362,8 +362,8 @@ def tune_model(args, search_space: Dict[str, Any], X_train, y_train):
 
         effective_pqk_backend = _resolve_effective_pqk_backend(args)
         print(
-            f"--- [BayesSearchCV]: Using '{backend_choice}' backend for {n_jobs} jobs "
-            f"(effective_pqk_backend={effective_pqk_backend}). ---"
+            f"[BayesSearchCV]: Using '{backend_choice}' backend for {n_jobs} jobs "
+            f"(effective_pqk_backend={effective_pqk_backend})."
         )
         with parallel_backend(backend_choice, n_jobs=n_jobs):
             callbacks = [
