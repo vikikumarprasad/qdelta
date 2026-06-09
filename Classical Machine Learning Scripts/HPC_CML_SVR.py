@@ -1,6 +1,4 @@
 # HPC_CML_SVR.py
-# Support Vector Regression for delta-learning and direct DFT prediction.
-# Supports ALL and Q9 feature variants with Optuna tuning and PDF parity plots.
 
 import os, json, warnings, argparse, textwrap
 from pathlib import Path
@@ -25,7 +23,6 @@ import matplotlib.pyplot as plt
 
 warnings.filterwarnings("ignore")
 
-# matplotlib settings for paper-quality PDF output
 plt.rcParams.update({
     "pdf.fonttype": 42, "ps.fonttype": 42,
     "font.family": "DejaVu Serif",
@@ -36,44 +33,38 @@ plt.rcParams.update({
     "legend.frameon": False,
 })
 
-# fixed set of 9 physically meaningful features used in the Q9 variant
 Q9_FEATURES = [
-    "exp_mopac", "AE_mopac", "Par_n_Pople", "Mul", "ch_f",
-    "DH_Mopac", "ZPE_TS_R", "Freq", "ZPE_P_R"
+    "ch_f", "Mul", "ZPE_TS_P", "Freq", "lap_eig_1",
+    "SMR_VSA9", "Par_n_Pople", "BalabanJ", "LabuteASA"
 ]
-
 
 def log(msg: str):
     """Prints a timestamped message to stdout."""
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"{ts} | {msg}", flush=True)
 
-
 def ensure_dir(p: Path) -> Path:
     """Creates a directory and all parents if they do not exist, then returns the path."""
     p.mkdir(parents=True, exist_ok=True)
     return p
 
-
 def beige_box_stats(ax, text: str):
-    """Adds a beige stats text box to the given axes."""
     ax.text(
         0.03, 0.97, text, transform=ax.transAxes,
         ha="left", va="top",
         bbox=dict(boxstyle="round,pad=0.35", facecolor="#f3e9d2", edgecolor="#d3c6a3", alpha=0.9)
     )
 
-
 def parity_plot_pdf(y_true, y_pred, out_pdf, xlabel, ylabel, title=None, mae=None, r2=None):
     """Saves a parity scatter plot with a dashed y=x line and a stats box to a PDF file."""
     y_true = np.asarray(y_true).ravel()
     y_pred = np.asarray(y_pred).ravel()
-    resid  = y_true - y_pred
-    sd     = float(np.std(resid, ddof=1)) if len(resid) > 1 else 0.0
+    resid = y_true - y_pred
+    sd = float(np.std(resid, ddof=1)) if len(resid) > 1 else 0.0
 
     fig, ax = plt.subplots(figsize=(3.5, 3.5))
-    lo  = min(y_true.min(), y_pred.min())
-    hi  = max(y_true.max(), y_pred.max())
+    lo = min(y_true.min(), y_pred.min())
+    hi = max(y_true.max(), y_pred.max())
     pad = 0.02 * (hi - lo) if hi > lo else 1.0
     lo, hi = lo - pad, hi + pad
 
@@ -97,12 +88,9 @@ def parity_plot_pdf(y_true, y_pred, out_pdf, xlabel, ylabel, title=None, mae=Non
     fig.savefig(out_pdf, bbox_inches="tight", transparent=True)
     plt.close(fig)
 
-
 def build_svr_params(trial: opt.trial.Trial):
     """
     Returns an SVR kwargs dict for the given trial.
-
-    Uses distinct parameter names for rbf and poly gamma to avoid Optuna distribution conflicts.
     """
     kernel = trial.suggest_categorical("kernel", ["rbf", "poly"])
     params = {
@@ -118,12 +106,9 @@ def build_svr_params(trial: opt.trial.Trial):
         params["coef0"]  = trial.suggest_float("coef0", 0.0, 1.0)
     return params
 
-
 def tune_svr(X, y, n_trials, folds, repeats, seed, out_csv: Path):
     """
     Runs Optuna hyperparameter search for SVR using cross-validated MAE.
-
-    Returns the best CV MAE, the raw Optuna best params, and a cleaned SVR kwargs dict.
     """
     sampler = TPESampler(seed=seed, multivariate=True)
     pruner  = MedianPruner(n_startup_trials=10, n_warmup_steps=3)
@@ -151,18 +136,14 @@ def tune_svr(X, y, n_trials, folds, repeats, seed, out_csv: Path):
 
     best = study.best_params
 
-    # maps kernel-specific gamma keys back to the single 'gamma' SVR argument
     svr_params = {k: v for k, v in best.items() if k not in ("gamma_rbf", "gamma_poly")}
     svr_params["gamma"] = best["gamma_rbf"] if svr_params["kernel"] == "rbf" else best["gamma_poly"]
 
     return study.best_value, best, svr_params
 
-
 def corr90_prune(X_train: pd.DataFrame, X_test: pd.DataFrame, out_txt: Path):
     """
     Removes features with pairwise correlation above 0.90 using train-only statistics.
-
-    Returns the pruned train and test DataFrames and the list of dropped column names.
     """
     corr    = X_train.corr().abs()
     upper   = corr.where(np.triu(np.ones(corr.shape), k=1).astype(bool))
@@ -171,7 +152,6 @@ def corr90_prune(X_train: pd.DataFrame, X_test: pd.DataFrame, out_txt: Path):
         for c in to_drop:
             f.write(c + "\n")
     return X_train.drop(columns=to_drop), X_test.drop(columns=to_drop, errors="ignore"), to_drop
-
 
 def run_variant(variant_name: str,
                 X_train_full: pd.DataFrame,
@@ -183,9 +163,6 @@ def run_variant(variant_name: str,
                 summary_rows: list):
     """
     Runs delta-learning and direct DFT SVR training for one feature variant.
-
-    Applies correlation pruning, tunes with Optuna, fits final pipelines,
-    saves predictions, parity PDFs, a metrics JSON, and a Markdown report.
     """
     vdir = ensure_dir(root_out / variant_name)
     pdir = ensure_dir(vdir / "plots")
@@ -215,10 +192,10 @@ def run_variant(variant_name: str,
 
     if tcol == "ae_delta":
         dft_col, pm7_col       = "ae_dft", "AE_mopac"
-        delta_label, dft_label = "ΔAE (kcal/mol)", "AE (kcal/mol)"
+        delta_label, dft_label = "delta-AE (kcal/mol)", "AE (kcal/mol)"
     else:
         dft_col, pm7_col       = "dh_dft", "DH_Mopac"
-        delta_label, dft_label = "ΔH‡ (kcal/mol)", "H‡ (kcal/mol)"
+        delta_label, dft_label = "delta-dh (kcal/mol)", "DH (kcal/mol)"
 
     # falls back to searching for a PM7 column by name if the default is missing
     if pm7_col not in test_df.columns:
@@ -235,7 +212,7 @@ def run_variant(variant_name: str,
     y_te_dft   = test_df.loc[Xte.index, dft_col].values.ravel()
     pm7_base   = test_df.loc[Xte.index, pm7_col].values.ravel()
 
-    # delta-learning: tune on delta, fit final pipeline, reconstruct DFT = PM7 + delta
+    # delta-learning
     cv_mae_delta, raw_params_delta, svr_params_delta = tune_svr(
         X=Xtr, y=pd.Series(y_tr_delta), n_trials=args.n_trials,
         folds=args.cv_folds, repeats=args.cv_repeats, seed=args.seed,
@@ -255,7 +232,7 @@ def run_variant(variant_name: str,
     mae_dft_from_delta = mean_absolute_error(y_te_dft, pred_dft_from_delta)
     r2_dft_from_delta  = r2_score(y_te_dft, pred_dft_from_delta)
 
-    # direct DFT: tune on DFT values directly, fit final pipeline, predict DFT
+    # direct DFT
     cv_mae_dft, raw_params_dft, svr_params_dft = tune_svr(
         X=Xtr, y=pd.Series(y_tr_dft), n_trials=args.n_trials,
         folds=args.cv_folds, repeats=args.cv_repeats, seed=args.seed,
@@ -330,23 +307,23 @@ def run_variant(variant_name: str,
 
     summary_rows.append(metrics)
 
-    # writes a minimal Markdown report summarising results and artifact paths
+    # writes a Markdown report summarising results
     report = textwrap.dedent(f"""
     # SVR Report — Variant: {variant_name}
 
     **Features after prune:** {Xtr.shape[1]}
     **Target:** {tcol}
 
-    ## Δ-learning
-    - CV MAE (Δ): {cv_mae_delta:.4f}
-    - Test MAE (Δ): {mae_delta:.4f}
-    - Test MAE (DFT = PM7 + Δ): {mae_dft_from_delta:.4f}
-    - Test R²  (DFT = PM7 + Δ): {r2_dft_from_delta:.4f}
+    ## delta-learning
+    - CV MAE (delta): {cv_mae_delta:.4f}
+    - Test MAE (delta): {mae_delta:.4f}
+    - Test MAE (DFT = PM7 + delta): {mae_dft_from_delta:.4f}
+    - Test R2  (DFT = PM7 + delta): {r2_dft_from_delta:.4f}
 
     ## Direct DFT
     - CV MAE (DFT): {cv_mae_dft:.4f}
     - Test MAE (DFT): {mae_dft_direct:.4f}
-    - Test R²  (DFT): {r2_dft_direct:.4f}
+    - Test R2  (DFT): {r2_dft_direct:.4f}
 
     ## Artifacts
     - Plots: `plots/svr_parity_delta_only.pdf`, `plots/svr_parity_dft_from_delta.pdf`, `plots/svr_parity_direct_dft.pdf`
@@ -380,7 +357,6 @@ def main():
 
     os.makedirs(args.output_dir, exist_ok=True)
 
-    # sets thread counts for all linear algebra libraries
     for var in ["OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"]:
         os.environ[var] = str(args.n_jobs)
     np.random.seed(args.seed)
@@ -411,7 +387,7 @@ def main():
             summary_rows=summary_rows
         )
 
-    # saves a top-level summary CSV across all variants
+    # saves a summary CSV across all variants
     pd.DataFrame(summary_rows).to_csv(Path(args.output_dir) / "SVR_summary_all_vs_q9.csv", index=False)
     log("Done. Artifacts saved under per-variant folders and top-level summary CSV created.")
 
