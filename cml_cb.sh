@@ -22,8 +22,8 @@ NUM_FEATURES="${NUM_FEATURES:-all}"
 PCA_COMPONENTS="${PCA_COMPONENTS:-none}"
 RUN_VARIANTS="${RUN_VARIANTS:-both}"        # all, q9
 
-# paths — edit these to match cluster setup
-BASE_DIR="/path/to//project"
+# paths
+BASE_DIR="/path/to/project"
 DATA_DIR="$BASE_DIR/data"
 OUTPUT_ROOT="$BASE_DIR/outputs/CML_Models"
 SIF_PATH="$BASE_DIR/CML.sif"
