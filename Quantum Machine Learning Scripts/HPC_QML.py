@@ -10,7 +10,7 @@ import qiskit
 
 def setup_arguments():
     parser = argparse.ArgumentParser(
-        description="Run a QML pipeline.",
+        description="Run QML pipeline.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
@@ -63,14 +63,13 @@ def setup_arguments():
 
 
 def main():
-    # pre-parse the flags needed before full argument setup
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--load_custom", action="store_true")
     parser.add_argument("--verbose",     type=int, default=0)
     parser.add_argument("--n_jobs",      type=int, default=1)
     args, _ = parser.parse_known_args()
 
-    print(f"Qiskit Version in Container: {qiskit.__version__} ---")
+    print(f"Qiskit Version in Container: {qiskit.__version__}")
 
     if args.load_custom:
         from qml_lib.local_kernel import register_custom_components
@@ -91,7 +90,7 @@ def main():
     run_pipeline(args)
 
     end_time = time.time()
-    print(f"\n--- Pipeline finished in {end_time - start_time:.2f} seconds ---")
+    print(f"\n Pipeline finished in {end_time - start_time:.2f} seconds")
 
 
 if __name__ == "__main__":
