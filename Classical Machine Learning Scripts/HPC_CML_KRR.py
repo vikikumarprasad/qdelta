@@ -299,7 +299,7 @@ def run_variant(variant_name: str,
 
     # writes a Markdown report summarising results
     report = textwrap.dedent(f"""
-    # KRR Report — Variant: {variant_name}
+    # KRR Report - Variant: {variant_name}
 
     **Features after prune:** {Xtr.shape[1]}
     **Target:** {tcol}
