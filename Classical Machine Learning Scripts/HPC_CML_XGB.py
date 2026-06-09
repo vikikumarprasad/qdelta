@@ -284,7 +284,7 @@ def run_variant(variant: str, q9_list: list[str] | None = None) -> dict:
     (d_meta / "XGB_metrics.json").write_text(json.dumps(summary, indent=2))
 
     md = []
-    md.append(f"# XGB Results — {variant.upper()}\n")
+    md.append(f"# XGB Results - {variant.upper()}\n")
     md.append(f"- Features after pruning: **{Xtr.shape[1]}** (dropped {len(to_drop)})\n")
     md.append("## delta-learning (DFT = PM7 + delta)\n")
     md.append(f"- Best trees: **{best_n_delta}**\n- Test MAE (delta): **{mae_delta:.3f}** kcal/mol\n"
