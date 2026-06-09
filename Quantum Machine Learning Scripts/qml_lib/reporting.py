@@ -31,9 +31,6 @@ def _title_from_args(args, prefix=None):
     return f"{prefix} - {base}" if prefix else base
 
 def _scatter_to_pdf(path, title, x_vals, y_vals, metrics_box, x_label, y_label):
-    """
-    Renders a scatter plot with a y=x reference line and a metrics text box, then saves as PDF.
-    """
     plt.style.use('seaborn-v0_8-whitegrid')
     fig, ax = plt.subplots(figsize=(8, 8))
 
@@ -228,12 +225,12 @@ def generate_results_pdfs(
         sd_m     = float(np.std(y_pred_m - y_true_m))
         metrics2 = {"r2": r2, "mae": mae_m, "std": sd_m}
 
-        title_B = _title_from_args(args, prefix="Model-Only (Δ)")
+        title_B = _title_from_args(args, prefix="Model-Only (delta)")
         path_B  = f"{fname_base}_results_{mode}_model_only.pdf"
         _scatter_to_pdf(
             path_B, title_B, y_true_m, y_pred_m, metrics2,
-            x_label=f"Reference Δ{tgt} (kcal/mol)",
-            y_label=f"Predicted Δ{tgt} (kcal/mol) [{args.model.upper()}]"
+            x_label=f"Reference delta-{tgt} (kcal/mol)",
+            y_label=f"Predicted delta-{tgt} (kcal/mol) [{args.model.upper()}]"
         )
         result["model_only_pdf"] = path_B
 
