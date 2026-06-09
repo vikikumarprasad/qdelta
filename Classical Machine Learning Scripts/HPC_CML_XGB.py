@@ -62,7 +62,7 @@ def parity_plot_pdf(
     y_true, y_pred, out_pdf: Path,
     xlabel: str, ylabel: str,
     title: str | None = None
-)
+):
     y_true = np.asarray(y_true).ravel()
     y_pred = np.asarray(y_pred).ravel()
 
@@ -75,7 +75,7 @@ def parity_plot_pdf(
     pad = 0.02 * (hi - lo) if hi > lo else 1.0
     lo, hi = lo - pad, hi + pad
 
-    fig, ax = plt.subplots(figsize=(6.0, 6.0)
+    fig, ax = plt.subplots(figsize=(6.0, 6.0))
     ax.scatter(y_true, y_pred, s=28, color="#2F5D86", edgecolors="none", alpha=0.85)
     ax.plot([lo, hi], [lo, hi], "--", color="#D9534F", lw=1.6)
     ax.grid(True, alpha=0.35)
@@ -98,6 +98,10 @@ test_df  = pd.read_csv(DATA / "test_df_new.csv",  index_col=0)
 train_df.columns = train_df.columns.str.strip()
 test_df.columns  = test_df.columns.str.strip()
 
+Q9_FEATURES = [
+    "ch_f", "Mul", "ZPE_TS_P", "Freq", "lap_eig_1", "SMR_VSA9", "Par_n_Pople", "BalabanJ", "LabuteASA",
+]
+
 def run_variant(variant: str, q9_list: list[str] | None = None) -> dict:
     vroot = OUT / variant
     d_models = vroot / "models"
@@ -111,7 +115,7 @@ def run_variant(variant: str, q9_list: list[str] | None = None) -> dict:
     X_test_full  = test_df .drop(columns=["dh_delta","ae_delta","dh_dft","ae_dft"])
 
     if variant == "q9":
-        feats = q9_list if q9_list is not None else Q9_DEFAULT
+        feats = q9_list if q9_list is not None else Q9_FEATURES
         feats = [c for c in feats if c in X_train_full.columns]
         if not feats:
             raise ValueError("Q9 feature list not found in DataFrame columns.")
