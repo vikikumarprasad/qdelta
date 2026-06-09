@@ -8,14 +8,11 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import mean_absolute_error
 from datetime import datetime
 
-
 def _target_tag(args):
-    """Returns a short label string for the target property used in plot axes."""
     try:
-        return "AE" if getattr(args, "target", "ae") == "ae" else "ΔH"
+        return "AE" if getattr(args, "target", "ae") == "ae" else "delta-dh"
     except Exception:
         return "AE"
-
 
 def _title_from_args(args, prefix=None):
     """Builds a descriptive plot title from the run configuration."""
@@ -32,7 +29,6 @@ def _title_from_args(args, prefix=None):
     tgt  = getattr(args, "target", "ae").upper()
     base = f"{args.model.upper()} - {enc_disp} - {args.qubits}Q - {tgt} - Tuner: {tnr_disp}"
     return f"{prefix} - {base}" if prefix else base
-
 
 def _scatter_to_pdf(path, title, x_vals, y_vals, metrics_box, x_label, y_label):
     """
