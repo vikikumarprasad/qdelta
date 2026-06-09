@@ -1,6 +1,4 @@
 # HPC_CML_DNN.py
-# Deep neural network model for delta-learning and direct DFT prediction.
-# Supports ALL and Q9 feature variants, with Optuna tuning and PDF parity plots.
 
 import os, json, warnings, argparse
 from pathlib import Path
@@ -31,7 +29,6 @@ from tensorflow.keras import backend as K
 
 warnings.filterwarnings("ignore")
 
-# matplotlib settings for paper-quality PDF output
 plt.rcParams.update({
     "pdf.fonttype": 42,
     "ps.fonttype": 42,
@@ -46,7 +43,6 @@ plt.rcParams.update({
     "ytick.major.size": 4,
     "legend.frameon": False,
 })
-
 
 def parity_plot_pdf(y_true, y_pred, out_pdf, xlabel, ylabel, annotate=None, title=None):
     """Saves a parity scatter plot with a y=x reference line to a PDF file."""
@@ -73,7 +69,6 @@ def parity_plot_pdf(y_true, y_pred, out_pdf, xlabel, ylabel, annotate=None, titl
     fig.tight_layout()
     fig.savefig(out_pdf, bbox_inches="tight", transparent=True)
     plt.close(fig)
-
 
 # command-line arguments
 parser = argparse.ArgumentParser()
@@ -109,12 +104,10 @@ except Exception:
     pass
 K.set_floatx("float32")
 
-
 def log(msg: str):
     """Prints a timestamped message to stdout."""
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"{ts} | {msg}", flush=True)
-
 
 # loads train and test CSVs
 train_csv = Path(args.data_dir) / "train_df_new.csv"
@@ -128,10 +121,10 @@ X_test_base  = test_df.drop(columns=["dh_delta", "ae_delta", "dh_dft", "ae_dft"]
 y_train_df   = train_df[["dh_delta", "ae_delta"]]
 y_test_df    = test_df[["dh_delta", "ae_delta"]]
 
-# Q9 is a fixed subset of 9 physically meaningful features
-Q9_LIST = ["exp_mopac", "AE_mopac", "Par_n_Pople", "Mul", "ch_f", "DH_Mopac", "ZPE_TS_R", "Freq", "ZPE_P_R"]
+Q9_FEATURES = [
+    "ch_f", "Mul", "ZPE_TS_P", "Freq", "lap_eig_1", "SMR_VSA9", "Par_n_Pople", "BalabanJ", "LabuteASA"
+]
 
-# optionally restricts to an explicit feature subset before running variants
 if args.feature_set:
     feat_subset = [c for c in args.feature_set if c in X_train_base.columns]
     if feat_subset:
@@ -146,11 +139,10 @@ VARIANTS = []
 if args.run_variants in ("all", "both"):
     VARIANTS.append(("ALL", X_train_base.columns.tolist()))
 if args.run_variants in ("q9", "both"):
-    q9_cols = [c for c in Q9_LIST if c in X_train_base.columns]
+    q9_cols = [c for c in Q9_FEATURES if c in X_train_base.columns]
     if not q9_cols:
         raise ValueError("Q9 feature names not found in your data columns.")
     VARIANTS.append(("Q9", q9_cols))
-
 
 def build_model(n_layers: int, units: int, dropout: float, lr: float, input_dim: int) -> tf.keras.Model:
     """Builds and compiles a dense neural network with the given architecture."""
@@ -164,14 +156,9 @@ def build_model(n_layers: int, units: int, dropout: float, lr: float, input_dim:
     model.compile(optimizer=Adam(learning_rate=lr), loss="mae")
     return model
 
-
 def run_variant(variant_name: str, feat_cols: list) -> dict:
     """
     Runs delta-learning and direct DFT training for one feature variant.
-
-    Applies correlation pruning, tunes with Optuna, trains a final model,
-    saves predictions, parity PDFs, and a metrics JSON.
-    Returns a metrics dict.
     """
     var_dir = Path(args.output_dir) / variant_name
     var_dir.mkdir(parents=True, exist_ok=True)
@@ -204,15 +191,14 @@ def run_variant(variant_name: str, feat_cols: list) -> dict:
     if tcol == "ae_delta":
         dft_col   = "ae_dft"
         pm7_col   = "AE_mopac"
-        delta_lbl = "ΔAE (kcal/mol)"
+        delta_lbl = "delta-AE (kcal/mol)"
         dft_lbl   = "AE (kcal/mol)"
     else:
         dft_col   = "dh_dft"
         pm7_col   = "DH_Mopac"
-        delta_lbl = "ΔH‡ (kcal/mol)"
-        dft_lbl   = "H‡ (kcal/mol)"
+        delta_lbl = "delta-dh (kcal/mol)"
+        dft_lbl   = "DH (kcal/mol)"
 
-    # falls back to searching for a PM7 column by name if the default is missing
     if pm7_col not in test_df.columns:
         fallbacks = [c for c in test_df.columns if "mopac" in c.lower() or "pm7" in c.lower()]
         if fallbacks:
@@ -286,8 +272,7 @@ def run_variant(variant_name: str, feat_cols: list) -> dict:
 
         log(f"[{variant_name} | {label}] Best CV MAE: {study.best_value:.6f}")
         log(f"[{variant_name} | {label}] Best params: {study.best_params}")
-
-        # retrains on 80% of the training data with the best hyperparameters
+        
         bp = study.best_params
         X_trA, X_vaA, y_trA, y_vaA = train_test_split(
             Xtr_np, y_vector, test_size=0.20, random_state=args.seed
@@ -321,7 +306,7 @@ def run_variant(variant_name: str, feat_cols: list) -> dict:
 
         return study.best_value, bp, model, scaler_final
 
-    # delta-learning: tune on delta, predict delta, then reconstruct DFT = PM7 + delta
+    # delta-learning
     cv_mae_delta, bp_delta, model_delta, scaler_delta = tune_and_train("Δ-learning", y_tr_delta, out_prefix="dnn_delta")
 
     X_te_scaled         = scaler_delta.transform(Xte_np)
@@ -353,9 +338,8 @@ def run_variant(variant_name: str, feat_cols: list) -> dict:
         annotate=f"MAE = {mae_dft_from_delta:.2f} kcal/mol\nR² = {r2_dft_from_delta:.2f}"
     )
 
-    # direct DFT: tune and predict DFT values directly without delta correction
+    # direct DFT
     cv_mae_direct, bp_direct, model_direct, scaler_direct = tune_and_train("Direct DFT", y_tr_dft, out_prefix="dnn_direct_dft")
-
     X_te_scaled2    = scaler_direct.transform(Xte_np)
     pred_dft_direct = model_direct.predict(X_te_scaled2, verbose=0).reshape(-1)
     mae_dft_direct  = mean_absolute_error(y_te_dft, pred_dft_direct)
@@ -407,13 +391,11 @@ def run_variant(variant_name: str, feat_cols: list) -> dict:
     with open(var_dir / "metrics.json", "w") as f:
         json.dump(metrics, f, indent=2)
 
-    log(f"[{variant_name}] Δ: MAEΔ={mae_delta:.3f}, DFT(Δ) MAE={mae_dft_from_delta:.3f}, R²={r2_dft_from_delta:.3f}")
-    log(f"[{variant_name}] Direct DFT: MAE={mae_dft_direct:.3f}, R²={r2_dft_direct:.3f}")
+    log(f"[{variant_name}] delta: MAE={mae_delta:.3f}, DFT(delta) MAE={mae_dft_from_delta:.3f}, R2={r2_dft_from_delta:.3f}")
+    log(f"[{variant_name}] Direct DFT: MAE={mae_dft_direct:.3f}, R2={r2_dft_direct:.3f}")
 
     return metrics
-
-
-# runs each requested variant and saves a top-level summary JSON
+    
 all_metrics = []
 for vname, vcols in VARIANTS:
     all_metrics.append(run_variant(vname, vcols))
