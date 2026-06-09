@@ -45,8 +45,8 @@ if [ ${#LAYERS_LIST[@]} -ne "$N_CONFIGS" ]; then
   exit 1
 fi
 
-# paths — edit these to match your cluster setup
-BASE_DIR="/path/to/your/project"
+# paths
+BASE_DIR="/path/to/project"
 CODE_PATH="$BASE_DIR/HPC_QML.py"
 SIF_PATH="$BASE_DIR/QML.sif"
 OUTPUT_DIR="$BASE_DIR/outputs/QGPR"
@@ -69,11 +69,9 @@ ENCODING=${ENCODING_LIST[$enc_idx]}
 qubits=${QUBITS_LIST[$cfg_idx]}
 layers=${LAYERS_LIST[$cfg_idx]}
 
-# selects the first N features from the master list where N equals the qubit count
 master_features=("feature_1" "feature_2" "feature_3" "feature_4" "feature_5" "feature_6" "feature_7" "feature_8" "feature_9")
 features_arg=$(IFS=" "; echo "${master_features[*]:0:$qubits}")
 
-# builds kernel training arguments only if train_kernel is enabled
 TRAIN_KERNEL_ARG=""
 KOPT_ARGS=()
 if [ "$TRAIN_KERNEL" = "true" ]; then
